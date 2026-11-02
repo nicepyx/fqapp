@@ -11,6 +11,8 @@ import 'reader_illustration.dart';
 import '../../models/chapter_ideas.dart';
 import 'reader_text_selection.dart';
 import 'reader_theme.dart';
+import 'reader_block_text.dart';
+export 'reader_block_text.dart';
 
 /// Layout inputs exclude brightness and page mode, which do not change text.
 @immutable
@@ -237,9 +239,7 @@ class ReaderContentBlock {
   int? startElementOffset,
 }) {
   final from = _blockByParaId(layout, startPara);
-  final to = endPara == startPara
-      ? from
-      : _blockByParaId(layout, endPara);
+  final to = endPara == startPara ? from : _blockByParaId(layout, endPara);
   if (from == null || to == null) return null;
 
   final startInPara = _paraOffset(
@@ -1156,39 +1156,5 @@ class ReaderBlockContent extends StatelessWidget {
           : (details) => onParagraphLongPressEnd!(details.globalPosition),
       child: text,
     );
-  }
-}
-
-class ReaderBlockText extends StatelessWidget {
-  final ReaderContentBlock block;
-  final ReaderLayoutSpec spec;
-
-  const ReaderBlockText({super.key, required this.block, required this.spec});
-
-  @override
-  Widget build(BuildContext context) {
-    final key = block.isTitle
-        ? const ValueKey('reader-chapter-title')
-        : ValueKey('reader-paragraph-${block.index - 1}');
-    return block.isTitle
-        ? Text(
-            block.text,
-            key: key,
-            style: block.span.style,
-            textAlign: block.align,
-            textScaler: spec.textScaler,
-            textDirection: TextDirection.ltr,
-            locale: const Locale('zh', 'CN'),
-          )
-        : Text.rich(
-            block.span,
-            key: key,
-            style: block.span.style,
-            textAlign: block.align,
-            textScaler: spec.textScaler,
-            textDirection: TextDirection.ltr,
-            locale: const Locale('zh', 'CN'),
-            semanticsLabel: block.text,
-          );
   }
 }

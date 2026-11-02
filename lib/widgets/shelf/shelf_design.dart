@@ -29,25 +29,26 @@ class ShelfTokens {
   static const double editBarHeight = 52.0;
 
   /// 宫格 / 双列封面圆角。
-  static const double radiusCover = 10.0;
+  static const double radiusCover = 8.0;
 
   /// 列表封面圆角（更小的行内缩略图用更小的圆角）。
   static const double radiusListCover = 8.0;
 
   /// 双列信息卡、空态图标容器圆角。
-  static const double radiusCard = 14.0;
+  static const double radiusCard = 8.0;
 
   /// 筛选胶囊（全圆角观感）。
   static const double radiusChip = 18.0;
 
   /// 工具栏按钮（版式分段控件外壳、页头按钮）。
-  static const double radiusButton = 12.0;
+  static const double radiusButton = 8.0;
 
   // ---- 宫格 ----
 
   static const int gridColumns = 3;
-  static const double gridSpacing = 12.0;
-  static const double gridRunSpacing = 20.0;
+  static const double gridSpacing = 16.0;
+  static const double gridRunSpacing = 24.0;
+  static const double gridTitleSpacing = 8.0;
 
   /// 封面高宽比。与官方 1.3947369 视觉等价，取整洁值 1.4。
   static const double gridCoverRatio = 1.4;
@@ -86,7 +87,7 @@ class ShelfTokens {
   // ---- 字号 ----
 
   /// 宫格标题（原 14 w400，收紧字重提高层级）。
-  static const double titleGrid = 13.0;
+  static const double titleGrid = 14.0;
 
   /// 双列标题。
   static const double titleDouble = 15.0;
@@ -95,7 +96,7 @@ class ShelfTokens {
   static const double titleList = 15.0;
 
   /// 副信息（原 12）。
-  static const double subtitle = 11.5;
+  static const double subtitle = 12.0;
 
   /// 双列类型小标签字号。
   static const double kindTagSize = 10.0;
@@ -191,7 +192,7 @@ double shelfGridChildAspectRatio(
   final cellWidth = shelfGridCellWidth(availableWidth, columns: columns);
   final cellHeight =
       cellWidth * ShelfTokens.gridCoverRatio +
-      2 +
+      ShelfTokens.gridTitleSpacing +
       scaler.scale(ShelfTokens.titleGrid) * ShelfTokens.titleLineHeight * 2 +
       ShelfTokens.spaceXS +
       scaler.scale(ShelfTokens.subtitle) * ShelfTokens.subtitleLineHeight +
@@ -200,11 +201,14 @@ double shelfGridChildAspectRatio(
 }
 
 /// The width of one 双列 cell, including nothing of the page padding.
-double shelfDoubleCellWidth(double availableWidth) => math.max(
-  1.0,
-  (availableWidth - ShelfTokens.screenPadding * 2 - ShelfTokens.gridSpacing) /
-      2,
-);
+double shelfDoubleCellWidth(double availableWidth, {int columns = 2}) =>
+    math.max(
+      1.0,
+      (availableWidth -
+              ShelfTokens.screenPadding * 2 -
+              ShelfTokens.gridSpacing * (columns - 1)) /
+          columns,
+    );
 
 /// 双列类型小标签的实测高度（10sp 文本 + 上下 3dp 内边距）。
 double shelfKindTagHeight(BuildContext context) =>
@@ -214,9 +218,10 @@ double shelfKindTagHeight(BuildContext context) =>
 double shelfDoubleChildAspectRatio(
   BuildContext context, {
   required double availableWidth,
+  int columns = 2,
 }) {
   final scaler = MediaQuery.textScalerOf(context);
-  final cellWidth = shelfDoubleCellWidth(availableWidth);
+  final cellWidth = shelfDoubleCellWidth(availableWidth, columns: columns);
   final coverWidth = math.max(
     1.0,
     cellWidth - ShelfTokens.doubleCardPadding * 2,

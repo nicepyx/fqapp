@@ -7,6 +7,7 @@ import 'package:flutter_lucide/flutter_lucide.dart';
 import '../../services/reader_device.dart';
 import '../../services/reader_preferences.dart';
 import '../../services/reader_tap_zones.dart';
+import '../home/home_design.dart';
 import 'reader_tap_zone_sheet.dart';
 import 'reader_theme.dart';
 
@@ -155,10 +156,10 @@ class _ReaderAppearanceSheetState extends State<ReaderAppearanceSheet> {
         // 墨水屏：任何插值动画都会在屏上留残影，排版面板直接跳变。
         duration: preset.isEink
             ? Duration.zero
-            : const Duration(milliseconds: 160),
+            : HomeMotion.duration(context, 160),
         decoration: BoxDecoration(
           color: preset.sheetColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
           border: Border(
             top: BorderSide(
               color: preset.isDark
@@ -220,15 +221,11 @@ class _ReaderAppearanceSheetState extends State<ReaderAppearanceSheet> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        _section('外观与间距'),
                         // 全局墨水屏 / OLED 开启时背景跟随全局，色块仅作展示。
                         if (_backgroundLocked)
                           Padding(
-                            padding: const EdgeInsets.fromLTRB(
-                              16,
-                              0,
-                              16,
-                              12,
-                            ),
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                             child: Text(
                               widget.einkOverride
                                   ? '全局墨水屏模式已开启，背景跟随全局设置'
@@ -249,11 +246,12 @@ class _ReaderAppearanceSheetState extends State<ReaderAppearanceSheet> {
                           child: Expanded(
                             child: LayoutBuilder(
                               builder: (context, constraints) {
-                                final count =
-                                    ReaderThemePreset.values.length;
+                                final count = ReaderThemePreset.values.length;
                                 final diameter =
-                                    (constraints.maxWidth / count - 4)
-                                        .clamp(24.0, 38.0);
+                                    (constraints.maxWidth / count - 4).clamp(
+                                      24.0,
+                                      38.0,
+                                    );
                                 return Row(
                                   mainAxisAlignment:
                                       MainAxisAlignment.spaceEvenly,
@@ -278,9 +276,8 @@ class _ReaderAppearanceSheetState extends State<ReaderAppearanceSheet> {
                               min: 14,
                               max: 32,
                               format: (value) => value.round().toString(),
-                              onStep: (value) => _update(
-                                _value.copyWith(fontSize: value),
-                              ),
+                              onStep: (value) =>
+                                  _update(_value.copyWith(fontSize: value)),
                             ),
                           ),
                         ),
@@ -305,7 +302,9 @@ class _ReaderAppearanceSheetState extends State<ReaderAppearanceSheet> {
                             selected: _value.paragraphSpacing.round(),
                             format: (value) => '$value',
                             onSelected: (value) => _update(
-                              _value.copyWith(paragraphSpacing: value.toDouble()),
+                              _value.copyWith(
+                                paragraphSpacing: value.toDouble(),
+                              ),
                             ),
                           ),
                         ),
@@ -333,7 +332,7 @@ class _ReaderAppearanceSheetState extends State<ReaderAppearanceSheet> {
                             ),
                           ),
                         ),
-                        // 阅读方式 + 翻页方式: two official option rows.
+                        _section('翻页与操作'),
                         _row(
                           label: '阅读方式',
                           child: Expanded(
@@ -342,9 +341,7 @@ class _ReaderAppearanceSheetState extends State<ReaderAppearanceSheet> {
                                 for (final mode in ReaderPageMode.values)
                                   Expanded(
                                     child: _chip(
-                                      key: ValueKey(
-                                        'reader-mode-${mode.name}',
-                                      ),
+                                      key: ValueKey('reader-mode-${mode.name}'),
                                       label: mode == ReaderPageMode.paged
                                           ? '左右翻页'
                                           : '上下滚动',
@@ -387,9 +384,8 @@ class _ReaderAppearanceSheetState extends State<ReaderAppearanceSheet> {
                           subtitle:
                               '分页模式：滑动越过阈值直接翻页，不显示翻页过渡与动画；开启后翻页方式强制为“无”。适合墨水屏',
                           value: _value.instantSwipeTurn,
-                          onChanged: (value) => _update(
-                            _value.copyWith(instantSwipeTurn: value),
-                          ),
+                          onChanged: (value) =>
+                              _update(_value.copyWith(instantSwipeTurn: value)),
                         ),
                         _row(
                           label: '点击区域',
@@ -434,7 +430,7 @@ class _ReaderAppearanceSheetState extends State<ReaderAppearanceSheet> {
                             ),
                           ),
                         ),
-                        // 字体: import + weight chips, official 字体 row shape.
+                        _section('字体与字重'),
                         _row(
                           label: '字体',
                           child: Expanded(
@@ -499,12 +495,9 @@ class _ReaderAppearanceSheetState extends State<ReaderAppearanceSheet> {
                                   Expanded(
                                     child: _chip(
                                       label: entry.value,
-                                      selected:
-                                          _value.fontWeight == entry.key,
+                                      selected: _value.fontWeight == entry.key,
                                       onTap: () => _update(
-                                        _value.copyWith(
-                                          fontWeight: entry.key,
-                                        ),
+                                        _value.copyWith(fontWeight: entry.key),
                                       ),
                                     ),
                                   ),
@@ -512,15 +505,13 @@ class _ReaderAppearanceSheetState extends State<ReaderAppearanceSheet> {
                             ),
                           ),
                         ),
-                        // Toggles: official switch rows — label left,
-                        // switch right, ~40dp row.
+                        _section('阅读辅助'),
                         _toggle(
                           '听书跟随翻页',
                           subtitle: '听书页播放本章时，阅读器按播放进度自动翻页',
                           value: _value.listeningFollow,
-                          onChanged: (value) => _update(
-                            _value.copyWith(listeningFollow: value),
-                          ),
+                          onChanged: (value) =>
+                              _update(_value.copyWith(listeningFollow: value)),
                         ),
                         _toggle(
                           '朗读句高亮',
@@ -534,9 +525,8 @@ class _ReaderAppearanceSheetState extends State<ReaderAppearanceSheet> {
                           '音量键翻页',
                           subtitle: '音量下 = 下一页，音量上 = 上一页',
                           value: _value.volumeKeyTurn,
-                          onChanged: (value) => _update(
-                            _value.copyWith(volumeKeyTurn: value),
-                          ),
+                          onChanged: (value) =>
+                              _update(_value.copyWith(volumeKeyTurn: value)),
                         ),
                         _toggle(
                           '连续阅读',
@@ -620,9 +610,9 @@ class _ReaderAppearanceSheetState extends State<ReaderAppearanceSheet> {
                         // counterpart (字距/标题字号/标题对齐), tucked away so the
                         // first screen stays official.
                         Theme(
-                          data: Theme.of(context).copyWith(
-                            dividerColor: Colors.transparent,
-                          ),
+                          data: Theme.of(
+                            context,
+                          ).copyWith(dividerColor: Colors.transparent),
                           child: ExpansionTile(
                             key: const ValueKey('reader-more-appearance'),
                             tilePadding: const EdgeInsets.symmetric(
@@ -644,6 +634,11 @@ class _ReaderAppearanceSheetState extends State<ReaderAppearanceSheet> {
                             ),
                             shape: const Border(),
                             collapsedShape: const Border(),
+                            expansionAnimationStyle: AnimationStyle(
+                              duration: preset.isEink
+                                  ? Duration.zero
+                                  : HomeMotion.duration(context, 180),
+                            ),
                             childrenPadding: const EdgeInsets.fromLTRB(
                               16,
                               0,
@@ -718,7 +713,7 @@ class _ReaderAppearanceSheetState extends State<ReaderAppearanceSheet> {
                                 ),
                                 minimumSize: const Size(0, 28),
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(30),
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
                               ),
                               onPressed: () => _update(
@@ -751,8 +746,18 @@ class _ReaderAppearanceSheetState extends State<ReaderAppearanceSheet> {
     );
   }
 
-  /// One official row: 16dp side margins, ~40dp tall, 12dp below, 13sp label
-  /// leading with a 16dp gap, controls filling the rest.
+  Widget _section(String title) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+    child: Text(
+      title,
+      style: TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        color: _displayPreset.textColor,
+      ),
+    ),
+  );
+
   Widget _row({
     required String label,
     required Widget child,
@@ -762,24 +767,39 @@ class _ReaderAppearanceSheetState extends State<ReaderAppearanceSheet> {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       constraints: BoxConstraints(minHeight: minHeight),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 64,
-            child: Text(
-              label,
-              style: TextStyle(color: preset.textColor, fontSize: 13),
-            ),
-          ),
-          const SizedBox(width: 12),
-          child,
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final labelWidget = Text(
+            label,
+            style: TextStyle(color: preset.textColor, fontSize: 13),
+          );
+          if (constraints.maxWidth < 380 ||
+              MediaQuery.textScalerOf(context).scale(13) > 17) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                labelWidget,
+                const SizedBox(height: 8),
+                Row(children: [child]),
+              ],
+            );
+          }
+          return Row(
+            children: [
+              SizedBox(width: 64, child: labelWidget),
+              const SizedBox(width: 12),
+              child,
+            ],
+          );
+        },
       ),
     );
   }
 
-  Widget _optionsRow(String label, Widget chips) =>
-      _row(label: label, child: Expanded(child: chips));
+  Widget _optionsRow(String label, Widget chips) => _row(
+    label: label,
+    child: Expanded(child: chips),
+  );
 
   /// 官方 aki 背景 swatch: a 32dp circle in the theme's own background colour,
   /// the selected one wrapped in a 1.3dp accent ring (aqx selector).
@@ -806,9 +826,7 @@ class _ReaderAppearanceSheetState extends State<ReaderAppearanceSheet> {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(
-              color: selected
-                  ? preset.accentColor
-                  : Colors.transparent,
+              color: selected ? preset.accentColor : Colors.transparent,
               width: 1.3,
             ),
           ),
@@ -847,10 +865,11 @@ class _ReaderAppearanceSheetState extends State<ReaderAppearanceSheet> {
           child: Tooltip(
             message: tooltip,
             child: InkWell(
-              borderRadius: BorderRadius.circular(90),
+              borderRadius: BorderRadius.circular(8),
               onTap: delta < 0
                   ? value > min
-                        ? () => onStep((value + delta).clamp(min, max).toDouble())
+                        ? () =>
+                              onStep((value + delta).clamp(min, max).toDouble())
                         : null
                   : value < max
                   ? () => onStep((value + delta).clamp(min, max).toDouble())
@@ -860,7 +879,7 @@ class _ReaderAppearanceSheetState extends State<ReaderAppearanceSheet> {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: preset.fieldColor,
-                  borderRadius: BorderRadius.circular(90),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   glyph,
@@ -929,16 +948,18 @@ class _ReaderAppearanceSheetState extends State<ReaderAppearanceSheet> {
         color: selected
             ? preset.accentColor.withValues(alpha: 0.14)
             : preset.fieldColor,
-        borderRadius: BorderRadius.circular(90),
+        borderRadius: BorderRadius.circular(8),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
           child: Container(
-            height: 32,
+            constraints: const BoxConstraints(minHeight: 40),
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
             alignment: Alignment.center,
             child: Text(
               label,
-              maxLines: 1,
+              maxLines: 2,
+              textAlign: TextAlign.center,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: selected ? preset.accentColor : preset.mutedTextColor,

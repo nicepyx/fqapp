@@ -5,9 +5,14 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/desktop_platform.dart';
+import '../services/desktop_shortcuts.dart';
 import 'video_player_chrome.dart';
 import 'player/playlet_danmaku_layer.dart';
 import 'player/playlet_danmaku_settings.dart';
+import 'desktop_mini_video_host.dart';
+import 'desktop_video_tools_host.dart';
+import 'desktop_video_seekbar.dart';
+import 'home/home_design.dart';
 
 class DesktopVideoChrome extends StatefulWidget {
   const DesktopVideoChrome({
@@ -34,6 +39,10 @@ class _DesktopVideoChromeState extends State<DesktopVideoChrome> {
   final _position = ValueNotifier<Duration>(Duration.zero);
   StreamSubscription<Duration>? _positionSub;
   final _catalogController = ScrollController();
+  final _transportScroll = ScrollController();
+  bool _controlsHovered = false;
+  bool _controlsFocused = false;
+  bool _popupOpen = false;
 
   // 选集网格几何：面板宽固定 304，桌面鼠标操作按 6 列小按钮排（旧版
   // 4 列大按钮一屏约 24 集，这个密度一屏两倍以上，长剧翻集不再逐屏
@@ -91,6 +100,7 @@ class _DesktopVideoChromeState extends State<DesktopVideoChrome> {
     _hide?.cancel();
     _positionSub?.cancel();
     _catalogController.dispose();
+    _transportScroll.dispose();
     _position.dispose();
     if (DesktopPlatform.fullscreen.value) {
       unawaited(DesktopPlatform.instance.setFullscreen(false));
@@ -102,7 +112,12 @@ class _DesktopVideoChromeState extends State<DesktopVideoChrome> {
     _hide?.cancel();
     if (!_visible) setState(() => _visible = true);
     _hide = Timer(const Duration(seconds: 3), () {
-      if (mounted && c.playing && _scrub == null) {
+      if (mounted &&
+          c.playing &&
+          _scrub == null &&
+          !_controlsHovered &&
+          !_controlsFocused &&
+          !_popupOpen) {
         setState(() => _visible = false);
       }
     });
@@ -150,8 +165,12 @@ class _DesktopVideoChromeState extends State<DesktopVideoChrome> {
     navigate(dy > 0 ? 1 : -1);
   }
 
-  KeyEventResult _key(FocusNode _, KeyEvent event) {
+  KeyEventResult _key(FocusNode _, KeyEvent event, VoidCallback onMini) {
     if (event is! KeyDownEvent || c.interactionBlocked) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.tab) {
+      _show();
       return KeyEventResult.ignored;
     }
     if (FocusManager.instance.primaryFocus?.context
@@ -159,34 +178,37 @@ class _DesktopVideoChromeState extends State<DesktopVideoChrome> {
         null) {
       return KeyEventResult.ignored;
     }
-    final key = event.logicalKey;
-    if (key == LogicalKeyboardKey.space) {
+    final command = DesktopShortcuts.instance.match(
+      DesktopShortcutGroup.video,
+      event,
+    );
+    if (command == DesktopCommand.videoPlay) {
       unawaited(_toggle());
-    } else if (key == LogicalKeyboardKey.arrowLeft) {
+    } else if (command == DesktopCommand.videoBack) {
       unawaited(
         _seek(
           (c.player?.position ?? Duration.zero) - const Duration(seconds: 10),
         ),
       );
-    } else if (key == LogicalKeyboardKey.arrowRight) {
+    } else if (command == DesktopCommand.videoForward) {
       unawaited(
         _seek(
           (c.player?.position ?? Duration.zero) + const Duration(seconds: 10),
         ),
       );
-    } else if (key == LogicalKeyboardKey.arrowUp ||
-        key == LogicalKeyboardKey.arrowDown) {
+    } else if (command == DesktopCommand.videoVolumeUp ||
+        command == DesktopCommand.videoVolumeDown) {
       setState(
         () => _volume =
-            (_volume + (key == LogicalKeyboardKey.arrowUp ? .05 : -.05)).clamp(
-              0,
-              1,
-            ),
+            (_volume + (command == DesktopCommand.videoVolumeUp ? .05 : -.05))
+                .clamp(0, 1),
       );
       unawaited(_applyVolume(_volume) ?? Future<void>.value());
-    } else if (key == LogicalKeyboardKey.keyF) {
+    } else if (command == DesktopCommand.videoMini) {
+      onMini();
+    } else if (command == DesktopCommand.videoFullscreen) {
       unawaited(_full());
-    } else if (key == LogicalKeyboardKey.escape &&
+    } else if (command == DesktopCommand.videoExitFullscreen &&
         DesktopPlatform.fullscreen.value) {
       unawaited(_full());
     } else {
@@ -279,8 +301,7 @@ class _DesktopVideoChromeState extends State<DesktopVideoChrome> {
                       IconButton(
                         tooltip: '收起面板',
                         visualDensity: VisualDensity.compact,
-                        onPressed: () =>
-                            setState(() => _dockCollapsed = true),
+                        onPressed: () => setState(() => _dockCollapsed = true),
                         icon: const Icon(Icons.view_sidebar),
                       ),
                   ],
@@ -377,8 +398,7 @@ class _DesktopVideoChromeState extends State<DesktopVideoChrome> {
                           c.currentIndex < start + _catalogSegmentSize,
                       visualDensity: VisualDensity.compact,
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      onSelected: (_) =>
-                          _scrollCatalogTo(start, animate: true),
+                      onSelected: (_) => _scrollCatalogTo(start, animate: true),
                     ),
                 ],
               ),
@@ -423,8 +443,14 @@ class _DesktopVideoChromeState extends State<DesktopVideoChrome> {
   Future<void> _showCatalog() {
     // 弹窗打开后把网格定位到当前集（帧后执行，等网格挂载）。
     _scrollCatalogTo(c.currentIndex, animate: false);
+    _show();
+    _hide?.cancel();
     return showDialog<void>(
       context: context,
+      animationStyle: AnimationStyle(
+        duration: HomeMotion.duration(context, 180),
+        reverseDuration: HomeMotion.duration(context, 120),
+      ),
       builder: (context) => Theme(
         data: ThemeData.dark(useMaterial3: true),
         child: Dialog(
@@ -436,11 +462,41 @@ class _DesktopVideoChromeState extends State<DesktopVideoChrome> {
           ),
         ),
       ),
-    );
+    ).whenComplete(() {
+      if (mounted) _show();
+    });
   }
+
   @override
-  Widget build(BuildContext context) => Theme(
+  Widget build(BuildContext context) => DesktopVideoToolsHost(
+    configuration: c,
+    rate: _rate,
+    onSeek: _seek,
+    child: DesktopMiniVideoHost(
+      configuration: c,
+      normalBuilder: (onMini) =>
+          Builder(builder: (context) => _normalView(context, onMini)),
+      onToggle: _toggle,
+      onSeek: _seek,
+      onRateSelected: (rate) async {
+        setState(() => _rate = rate);
+        await widget.onRateSelected(rate);
+      },
+      onVolumeSelected: (volume) async {
+        setState(() => _volume = volume);
+        await _applyVolume(volume);
+      },
+      position: _position,
+      rate: _rate,
+      volume: _volume,
+    ),
+  );
+
+  Widget _normalView(BuildContext context, VoidCallback onMini) => Theme(
     data: ThemeData.dark(useMaterial3: true).copyWith(
+      textTheme: ThemeData.dark(useMaterial3: true).textTheme.apply(
+        fontFamily: Theme.of(context).textTheme.bodyMedium?.fontFamily,
+      ),
       colorScheme: ColorScheme.fromSeed(
         seedColor: const Color(0xffef5038),
         brightness: Brightness.dark,
@@ -455,13 +511,19 @@ class _DesktopVideoChromeState extends State<DesktopVideoChrome> {
         },
         child: Focus(
           autofocus: true,
-          onKeyEvent: _key,
+          onKeyEvent: (node, event) => _key(node, event, onMini),
           child: Scaffold(
             backgroundColor: Colors.black,
             body: LayoutBuilder(
               builder: (context, constraints) {
                 final canDock = !full && constraints.maxWidth >= 1000;
                 final docked = canDock && !_dockCollapsed;
+                final transportHeight =
+                    64.0 +
+                    math.max(
+                      48.0,
+                      MediaQuery.textScalerOf(context).scale(14) * 1.4 + 16,
+                    );
                 // 全屏时运输条浮在画面上（官方全屏播放器同型）：非全屏仍占
                 // 固定 112 的高度，画面几何不随控件显隐跳动；全屏若也占位，
                 // 画面会被顶上去，底下留一条黑条。
@@ -481,16 +543,19 @@ class _DesktopVideoChromeState extends State<DesktopVideoChrome> {
                                   c.player != null &&
                                       c.player!.videoWidth > 0 &&
                                       c.player!.videoHeight > 0
-                                  ? c.player!.videoWidth /
-                                        c.player!.videoHeight
+                                  ? c.player!.videoWidth / c.player!.videoHeight
                                   : 16 / 9,
-                              child: c.child,
+                              child: DesktopVideoSurface(
+                                subtitleBottom: full
+                                    ? transportHeight + 12
+                                    : 12,
+                                child: c.child,
+                              ),
                             ),
                           ),
                           Positioned.fill(
                             child: Listener(
-                              behavior:
-                                  HitTestBehavior.translucent,
+                              behavior: HitTestBehavior.translucent,
                               onPointerSignal: _onPointerSignal,
                             ),
                           ),
@@ -512,284 +577,468 @@ class _DesktopVideoChromeState extends State<DesktopVideoChrome> {
                   ),
                 );
                 final transport = SizedBox(
-                  height: 112,
-                  child: AnimatedOpacity(
-                    opacity: _visible || !c.playing ? 1 : 0,
-                    duration: const Duration(milliseconds: 150),
-                    child: IgnorePointer(
-                      ignoring: !_visible && c.playing,
-                      child: DecoratedBox(
-                        decoration: const BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [Colors.transparent, Color(0xB3000000)],
-                          ),
-                        ),
-                        child: StreamBuilder<Duration>(
-                          stream: c.player?.positionStream,
-                          initialData:
-                              c.player?.position ?? Duration.zero,
-                          builder: (context, snapshot) {
-                            final max = math
-                                .max(1, c.duration.inMilliseconds)
-                                .toDouble();
-                            final position =
-                                snapshot.data ?? Duration.zero;
-                            return Column(
-                              children: [
-                                Row(
-                                  children: [
-                                    const SizedBox(width: 16),
-                                    Text(_time(position)),
-                                    Expanded(
-                                      child: Slider(
-                                        value:
-                                            (_scrub ??
-                                                    position
-                                                        .inMilliseconds
-                                                        .toDouble())
-                                                .clamp(0, max),
-                                        max: max,
-                                        onChanged: _ready
-                                            ? (v) => setState(
-                                                () => _scrub = v,
-                                              )
-                                            : null,
-                                        onChangeEnd: (v) {
-                                          unawaited(
-                                            _seek(
-                                              Duration(
-                                                milliseconds: v
-                                                    .round(),
-                                              ),
-                                            ),
-                                          );
-                                          setState(
-                                            () => _scrub = null,
-                                          );
-                                          _show();
-                                        },
-                                      ),
-                                    ),
-                                    Text(_time(c.duration)),
-                                    const SizedBox(width: 16),
-                                  ],
+                  height: transportHeight,
+                  child: MouseRegion(
+                    onEnter: (_) {
+                      _controlsHovered = true;
+                      _show();
+                    },
+                    onExit: (_) {
+                      _controlsHovered = false;
+                      _show();
+                    },
+                    child: Focus(
+                      onFocusChange: (focused) {
+                        _controlsFocused = focused;
+                        _show();
+                      },
+                      child: ExcludeFocus(
+                        excluding: !_visible && c.playing,
+                        child: ExcludeSemantics(
+                          excluding: !_visible && c.playing,
+                          child: AnimatedOpacity(
+                            key: const ValueKey('desktop-video-transport'),
+                            opacity: _visible || !c.playing ? 1 : 0,
+                            duration: HomeMotion.duration(context, 150),
+                            child: IgnorePointer(
+                              ignoring: !_visible && c.playing,
+                              child: DecoratedBox(
+                                decoration: const BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      Colors.transparent,
+                                      Color(0xB3000000),
+                                    ],
+                                  ),
                                 ),
-                                Row(
-                                  children: [
-                                    IconButton(
-                                      tooltip: '上一集',
-                                      onPressed: c.currentIndex > 0
-                                          ? () => c.onSelectEpisode(
-                                              c.currentIndex - 1,
-                                            )
-                                          : null,
-                                      icon: const Icon(
-                                        Icons.skip_previous,
-                                      ),
-                                    ),
-                                    IconButton(
-                                      tooltip: '快退 10 秒',
-                                      onPressed: _ready
-                                          ? () => _seek(
-                                              position -
-                                                  const Duration(
-                                                    seconds: 10,
-                                                  ),
-                                            )
-                                          : null,
-                                      icon: const Icon(
-                                        Icons.replay_10,
-                                      ),
-                                    ),
-                                    IconButton(
-                                      tooltip: '播放 / 暂停（空格）',
-                                      onPressed: _ready
-                                          ? _toggle
-                                          : null,
-                                      icon: Icon(
-                                        c.playing
-                                            ? Icons.pause
-                                            : Icons.play_arrow,
-                                      ),
-                                    ),
-                                    IconButton(
-                                      tooltip: '快进 10 秒',
-                                      onPressed: _ready
-                                          ? () => _seek(
-                                              position +
-                                                  const Duration(
-                                                    seconds: 10,
-                                                  ),
-                                            )
-                                          : null,
-                                      icon: const Icon(
-                                        Icons.forward_10,
-                                      ),
-                                    ),
-                                    IconButton(
-                                      tooltip: '下一集',
-                                      onPressed:
-                                          c.currentIndex + 1 <
-                                              c.episodes.length
-                                          ? () => c.onSelectEpisode(
-                                              c.currentIndex + 1,
-                                            )
-                                          : null,
-                                      icon: const Icon(
-                                        Icons.skip_next,
-                                      ),
-                                    ),
-                                    const Spacer(),
-                                    if (c.onToggleDanmaku != null)
-                                      IconButton(
-                                        tooltip: '弹幕',
-                                        onPressed: c.onToggleDanmaku,
-                                        icon: Icon(
-                                          c.danmakuEnabled
-                                              ? Icons.subtitles
-                                              : Icons.subtitles_off,
-                                        ),
-                                      ),
-                                    if (c.onDanmakuSettingsChanged !=
-                                        null)
-                                      IconButton(
-                                        tooltip: '弹幕设置',
-                                        onPressed: () => showDialog<void>(
-                                          context: context,
-                                          builder: (_) => Dialog(
-                                            child: SizedBox(
-                                              width: 420,
-                                              child: PlayletDanmakuSettingsPanel(
-                                                settings:
-                                                    c.danmakuSettings,
-                                                landscape: true,
-                                                onChanged: c
-                                                    .onDanmakuSettingsChanged,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        icon: const Icon(Icons.tune),
-                                      ),
-                                    PopupMenuButton<double>(
-                                      tooltip: '倍速',
-                                      initialValue: _rate,
-                                      onSelected: (v) {
-                                        setState(() => _rate = v);
-                                        unawaited(
-                                          widget.onRateSelected(v),
-                                        );
-                                      },
-                                      itemBuilder: (_) => [
-                                        for (final rate
-                                            in PlayerPreferences
-                                                .playbackRates)
-                                          PopupMenuItem(
-                                            value: rate,
-                                            child: Text('${rate}x'),
-                                          ),
-                                      ],
-                                      child: Padding(
-                                        padding: const EdgeInsets.all(
-                                          8,
-                                        ),
-                                        child: Text('${_rate}x'),
-                                      ),
-                                    ),
-                                    if (c
-                                            .qualityVariants
-                                            .isNotEmpty &&
-                                        c.onQualitySelected != null)
-                                      PopupMenuButton<int>(
-                                        tooltip: '清晰度',
-                                        onSelected: (i) =>
-                                            c.onQualitySelected!(
-                                              c.qualityVariants[i],
-                                            ),
-                                        itemBuilder: (_) => [
-                                          for (
-                                            var i = 0;
-                                            i <
-                                                c
-                                                    .qualityVariants
-                                                    .length;
-                                            i++
-                                          )
-                                            PopupMenuItem(
-                                              value: i,
+                                child: StreamBuilder<Duration>(
+                                  stream: c.player?.positionStream,
+                                  initialData:
+                                      c.player?.position ?? Duration.zero,
+                                  builder: (context, snapshot) {
+                                    final max = math
+                                        .max(1, c.duration.inMilliseconds)
+                                        .toDouble();
+                                    final position =
+                                        snapshot.data ?? Duration.zero;
+                                    return Column(
+                                      children: [
+                                        Row(
+                                          children: [
+                                            const SizedBox(width: 16),
+                                            SizedBox(
+                                              width:
+                                                  MediaQuery.textScalerOf(
+                                                    context,
+                                                  ).scale(12) *
+                                                  5.5,
                                               child: Text(
-                                                c
-                                                    .qualityVariants[i]
-                                                    .name,
+                                                _time(
+                                                  _scrub == null
+                                                      ? position
+                                                      : Duration(
+                                                          milliseconds: _scrub!
+                                                              .round(),
+                                                        ),
+                                                ),
+                                                key: const ValueKey(
+                                                  'desktop-video-position',
+                                                ),
+                                                textAlign: TextAlign.center,
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                ),
                                               ),
                                             ),
-                                        ],
-                                        child: const Padding(
-                                          padding: EdgeInsets.all(8),
-                                          child: Text('清晰度'),
+                                            Expanded(
+                                              child: DesktopVideoSeekbar(
+                                                value:
+                                                    (_scrub ??
+                                                            position
+                                                                .inMilliseconds
+                                                                .toDouble())
+                                                        .clamp(0, max),
+                                                max: max,
+                                                onChanged: _ready
+                                                    ? (v) => setState(
+                                                        () => _scrub = v,
+                                                      )
+                                                    : null,
+                                                onChangeEnd: (v) {
+                                                  unawaited(
+                                                    _seek(
+                                                      Duration(
+                                                        milliseconds: v.round(),
+                                                      ),
+                                                    ),
+                                                  );
+                                                  setState(() => _scrub = null);
+                                                  _show();
+                                                },
+                                              ),
+                                            ),
+                                            SizedBox(
+                                              width:
+                                                  MediaQuery.textScalerOf(
+                                                    context,
+                                                  ).scale(12) *
+                                                  5.5,
+                                              child: Text(
+                                                _time(c.duration),
+                                                textAlign: TextAlign.center,
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 16),
+                                          ],
                                         ),
-                                      ),
-                                    IconButton(
-                                      tooltip: '静音',
-                                      onPressed: () {
-                                        setState(
-                                          () => _volume = _volume == 0
-                                              ? 1
-                                              : 0,
-                                        );
-                                        unawaited(
-                                          _applyVolume(_volume) ??
-                                              Future<void>.value(),
-                                        );
-                                      },
-                                      icon: Icon(
-                                        _volume == 0
-                                            ? Icons.volume_off
-                                            : Icons.volume_up,
-                                      ),
-                                    ),
-                                    if (constraints.maxWidth >= 900)
-                                      SizedBox(
-                                        width: 82,
-                                        child: Slider(
-                                          value: _volume,
-                                          onChanged: (v) {
-                                            setState(
-                                              () => _volume = v,
-                                            );
-                                            unawaited(
-                                              _applyVolume(v) ??
-                                                  Future<
-                                                    void
-                                                  >.value(),
+                                        LayoutBuilder(
+                                          builder: (context, bounds) {
+                                            final minimum =
+                                                680.0 +
+                                                (c.onToggleDanmaku == null
+                                                    ? 0
+                                                    : 48) +
+                                                (c.onDanmakuSettingsChanged ==
+                                                        null
+                                                    ? 0
+                                                    : 48) +
+                                                (c.qualityVariants.isEmpty ||
+                                                        c.onQualitySelected ==
+                                                            null
+                                                    ? 0
+                                                    : 96) +
+                                                (constraints.maxWidth < 900
+                                                    ? 0
+                                                    : 82) +
+                                                (MediaQuery.textScalerOf(
+                                                              context,
+                                                            ).scale(14) -
+                                                            14)
+                                                        .clamp(0, 28) *
+                                                    8;
+                                            return Scrollbar(
+                                              controller: _transportScroll,
+                                              thumbVisibility:
+                                                  bounds.maxWidth < minimum,
+                                              child: SingleChildScrollView(
+                                                key: const ValueKey(
+                                                  'desktop-video-actions',
+                                                ),
+                                                controller: _transportScroll,
+                                                scrollDirection:
+                                                    Axis.horizontal,
+                                                padding: const EdgeInsets.only(
+                                                  bottom: 8,
+                                                ),
+                                                child: SizedBox(
+                                                  width: math.max(
+                                                    bounds.maxWidth,
+                                                    minimum,
+                                                  ),
+                                                  child: Row(
+                                                    children: [
+                                                      IconButton(
+                                                        tooltip: '上一集',
+                                                        onPressed:
+                                                            c.currentIndex > 0
+                                                            ? () => c.onSelectEpisode(
+                                                                c.currentIndex -
+                                                                    1,
+                                                              )
+                                                            : null,
+                                                        icon: const Icon(
+                                                          Icons.skip_previous,
+                                                        ),
+                                                      ),
+                                                      IconButton(
+                                                        tooltip: '快退 10 秒',
+                                                        onPressed: _ready
+                                                            ? () => _seek(
+                                                                position -
+                                                                    const Duration(
+                                                                      seconds:
+                                                                          10,
+                                                                    ),
+                                                              )
+                                                            : null,
+                                                        icon: const Icon(
+                                                          Icons.replay_10,
+                                                        ),
+                                                      ),
+                                                      IconButton(
+                                                        tooltip: '播放 / 暂停（空格）',
+                                                        onPressed: _ready
+                                                            ? _toggle
+                                                            : null,
+                                                        icon: Icon(
+                                                          c.playing
+                                                              ? Icons.pause
+                                                              : Icons
+                                                                    .play_arrow,
+                                                        ),
+                                                      ),
+                                                      IconButton(
+                                                        tooltip: '快进 10 秒',
+                                                        onPressed: _ready
+                                                            ? () => _seek(
+                                                                position +
+                                                                    const Duration(
+                                                                      seconds:
+                                                                          10,
+                                                                    ),
+                                                              )
+                                                            : null,
+                                                        icon: const Icon(
+                                                          Icons.forward_10,
+                                                        ),
+                                                      ),
+                                                      IconButton(
+                                                        tooltip: '下一集',
+                                                        onPressed:
+                                                            c.currentIndex + 1 <
+                                                                c
+                                                                    .episodes
+                                                                    .length
+                                                            ? () => c.onSelectEpisode(
+                                                                c.currentIndex +
+                                                                    1,
+                                                              )
+                                                            : null,
+                                                        icon: const Icon(
+                                                          Icons.skip_next,
+                                                        ),
+                                                      ),
+                                                      const Spacer(),
+                                                      DesktopVideoToolsButton(
+                                                        onSeek: _seek,
+                                                      ),
+                                                      if (c.onToggleDanmaku !=
+                                                          null)
+                                                        IconButton(
+                                                          tooltip: '弹幕',
+                                                          onPressed:
+                                                              c.onToggleDanmaku,
+                                                          icon: Icon(
+                                                            c.danmakuEnabled
+                                                                ? Icons
+                                                                      .subtitles
+                                                                : Icons
+                                                                      .subtitles_off,
+                                                          ),
+                                                        ),
+                                                      if (c.onDanmakuSettingsChanged !=
+                                                          null)
+                                                        IconButton(
+                                                          tooltip: '弹幕设置',
+                                                          onPressed: () => showDialog<void>(
+                                                            context: context,
+                                                            builder: (_) => Dialog(
+                                                              child: SizedBox(
+                                                                width: 420,
+                                                                child: PlayletDanmakuSettingsPanel(
+                                                                  settings: c
+                                                                      .danmakuSettings,
+                                                                  landscape:
+                                                                      true,
+                                                                  onChanged: c
+                                                                      .onDanmakuSettingsChanged,
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                          icon: const Icon(
+                                                            Icons.tune,
+                                                          ),
+                                                        ),
+                                                      PopupMenuButton<double>(
+                                                        tooltip: '倍速',
+                                                        onOpened: () {
+                                                          _popupOpen = true;
+                                                          _show();
+                                                        },
+                                                        onCanceled: () {
+                                                          _popupOpen = false;
+                                                          _show();
+                                                        },
+                                                        initialValue: _rate,
+                                                        onSelected: (v) {
+                                                          _popupOpen = false;
+                                                          _show();
+                                                          setState(
+                                                            () => _rate = v,
+                                                          );
+                                                          unawaited(
+                                                            widget
+                                                                .onRateSelected(
+                                                                  v,
+                                                                ),
+                                                          );
+                                                        },
+                                                        itemBuilder: (_) => [
+                                                          for (final rate
+                                                              in PlayerPreferences
+                                                                  .playbackRates)
+                                                            PopupMenuItem(
+                                                              value: rate,
+                                                              child: Text(
+                                                                '${rate}x',
+                                                              ),
+                                                            ),
+                                                        ],
+                                                        child: Padding(
+                                                          padding:
+                                                              const EdgeInsets.all(
+                                                                8,
+                                                              ),
+                                                          child: Text(
+                                                            '${_rate}x',
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      if (c
+                                                              .qualityVariants
+                                                              .isNotEmpty &&
+                                                          c.onQualitySelected !=
+                                                              null)
+                                                        PopupMenuButton<int>(
+                                                          tooltip: '清晰度',
+                                                          onOpened: () {
+                                                            _popupOpen = true;
+                                                            _show();
+                                                          },
+                                                          onCanceled: () {
+                                                            _popupOpen = false;
+                                                            _show();
+                                                          },
+                                                          onSelected: (i) {
+                                                            _popupOpen = false;
+                                                            _show();
+                                                            c.onQualitySelected!(
+                                                              c.qualityVariants[i],
+                                                            );
+                                                          },
+                                                          itemBuilder: (_) => [
+                                                            for (
+                                                              var i = 0;
+                                                              i <
+                                                                  c
+                                                                      .qualityVariants
+                                                                      .length;
+                                                              i++
+                                                            )
+                                                              PopupMenuItem(
+                                                                value: i,
+                                                                child: Text(
+                                                                  c
+                                                                      .qualityVariants[i]
+                                                                      .name,
+                                                                ),
+                                                              ),
+                                                          ],
+                                                          child: const Padding(
+                                                            padding:
+                                                                EdgeInsets.all(
+                                                                  8,
+                                                                ),
+                                                            child: Text('清晰度'),
+                                                          ),
+                                                        ),
+                                                      IconButton(
+                                                        tooltip: '静音',
+                                                        onPressed: () {
+                                                          setState(
+                                                            () => _volume =
+                                                                _volume == 0
+                                                                ? 1
+                                                                : 0,
+                                                          );
+                                                          unawaited(
+                                                            _applyVolume(
+                                                                  _volume,
+                                                                ) ??
+                                                                Future<
+                                                                  void
+                                                                >.value(),
+                                                          );
+                                                        },
+                                                        icon: Icon(
+                                                          _volume == 0
+                                                              ? Icons.volume_off
+                                                              : Icons.volume_up,
+                                                        ),
+                                                      ),
+                                                      if (constraints
+                                                              .maxWidth >=
+                                                          900)
+                                                        SizedBox(
+                                                          width: 82,
+                                                          child: Slider(
+                                                            value: _volume,
+                                                            onChanged: (v) {
+                                                              setState(
+                                                                () =>
+                                                                    _volume = v,
+                                                              );
+                                                              unawaited(
+                                                                _applyVolume(
+                                                                      v,
+                                                                    ) ??
+                                                                    Future<
+                                                                      void
+                                                                    >.value(),
+                                                              );
+                                                            },
+                                                          ),
+                                                        ),
+                                                      IconButton(
+                                                        tooltip: '选集',
+                                                        onPressed: _showCatalog,
+                                                        icon: const Icon(
+                                                          Icons.playlist_play,
+                                                        ),
+                                                      ),
+                                                      IconButton(
+                                                        tooltip: '切换全屏',
+                                                        onPressed: _full,
+                                                        icon: Icon(
+                                                          full
+                                                              ? Icons
+                                                                    .fullscreen_exit
+                                                              : Icons
+                                                                    .fullscreen,
+                                                        ),
+                                                      ),
+                                                      IconButton(
+                                                        key: const ValueKey(
+                                                          'video-mini-window',
+                                                        ),
+                                                        tooltip: '小窗播放',
+                                                        onPressed: onMini,
+                                                        icon: const Icon(
+                                                          Icons
+                                                              .picture_in_picture_alt,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 8),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
                                             );
                                           },
                                         ),
-                                      ),
-                                    IconButton(
-                                      tooltip: '选集',
-                                      onPressed: _showCatalog,
-                                      icon: const Icon(
-                                        Icons.playlist_play,
-                                      ),
-                                    ),
-                                    IconButton(
-                                      tooltip: '全屏（F / Esc）',
-                                      onPressed: _full,
-                                      icon: Icon(
-                                        full
-                                            ? Icons.fullscreen_exit
-                                            : Icons.fullscreen,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                  ],
+                                      ],
+                                    );
+                                  },
                                 ),
-                              ],
-                            );
-                          },
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),

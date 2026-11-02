@@ -1969,6 +1969,10 @@ class _VideoPlayerChromeState extends State<VideoPlayerChrome>
       return;
     }
     if (_panelDrawerClosing) return;
+    if (HomeMotion.reduced(context)) {
+      _removePanel();
+      return;
+    }
     setState(() => _panelDrawerClosing = true);
     _panelDrawerTimer?.cancel();
     _panelDrawerTimer = Timer(const Duration(milliseconds: 220), () {
@@ -2005,13 +2009,17 @@ class _VideoPlayerChromeState extends State<VideoPlayerChrome>
     // animateTo 的 future 会**永不完成**（真机实测：extent 冻结在 0.64，
     // 面板悬空遮住画面，点遮罩才能恢复）。超时兜底让收起流程必然收敛；
     // 用户拖动打断的场景由下方计数守卫接管，不受超时影响。
-    await _panel
-        .animateTo(
-          target,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOutCubic,
-        )
-        .timeout(const Duration(milliseconds: 300), onTimeout: () {});
+    if (HomeMotion.reduced(context)) {
+      _panel.jumpTo(target);
+    } else {
+      await _panel
+          .animateTo(
+            target,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+          )
+          .timeout(const Duration(milliseconds: 300), onTimeout: () {});
+    }
     if (!mounted || animation != _panelAnimation) return;
     _panelAnimating = false;
     if (target == 0) {
@@ -2861,7 +2869,7 @@ class _VideoPlayerChromeState extends State<VideoPlayerChrome>
           Positioned.fill(
             child: TweenAnimationBuilder<double>(
               tween: Tween(end: _panelDrawerClosing ? 0.0 : 1.0),
-              duration: const Duration(milliseconds: 200),
+              duration: HomeMotion.duration(context, 200),
               builder: (context, t, _) => GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => unawaited(_closePanel()),
@@ -2879,7 +2887,7 @@ class _VideoPlayerChromeState extends State<VideoPlayerChrome>
             width: PlayerSidePanel.widthFor(window.width),
             child: TweenAnimationBuilder<double>(
               tween: Tween(end: _panelDrawerClosing ? 0.0 : 1.0),
-              duration: const Duration(milliseconds: 200),
+              duration: HomeMotion.duration(context, 200),
               curve: Curves.easeOutCubic,
               builder: (context, t, child) => FractionalTranslation(
                 translation: Offset(1 - t, 0),

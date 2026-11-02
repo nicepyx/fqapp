@@ -72,9 +72,7 @@ class StoryCover extends StatelessWidget {
       fit: fit,
       alignment: alignment,
       memCacheWidth: cacheWidth.clamp(1, 1200),
-      fadeInDuration: MediaQuery.disableAnimationsOf(context)
-          ? Duration.zero
-          : const Duration(milliseconds: 220),
+      fadeInDuration: HomeMotion.duration(context, 180),
       placeholder: (_, _) => fallback,
       errorWidget: (_, _, _) => fallback,
     );
@@ -163,7 +161,7 @@ class HomeMediaCard extends StatelessWidget {
       width: coverWidth,
       builder: (width) => HomePressable(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
         semanticLabel: item.title,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -172,7 +170,7 @@ class HomeMediaCard extends StatelessWidget {
               aspectRatio: 5 / 7,
               child: RepaintBoundary(
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(8),
                   child: Stack(
                     fit: StackFit.expand,
                     children: [

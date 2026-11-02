@@ -4,6 +4,8 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import 'home/home_design.dart';
+
 /// 横向手势切顶栏标签的外壳：首页书城分类、短剧频道、书架一级 tab 共用。
 ///
 /// **为什么不是横向 `PageView`。** 三页的「标签」都不是独立页面：
@@ -147,7 +149,9 @@ class _TabSwipeAreaState extends State<TabSwipeArea>
     // LayoutBuilder 记下的内容宽度）。
     // 先停旧补间，否则它在下一帧还会继续写 _offset，把刚设好的入场位移抹掉。
     _anim.stop();
-    _offset.value = direction * _width * TabSwipeArea.enterFraction;
+    _offset.value = HomeMotion.reduced(context)
+        ? 0
+        : direction * math.min(48, _width * TabSwipeArea.enterFraction);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       unawaited(_to(0, TabSwipeArea.enterMs, Curves.easeOutCubic));
@@ -175,7 +179,7 @@ class _TabSwipeAreaState extends State<TabSwipeArea>
   }
 
   int _ms(int milliseconds) =>
-      MediaQuery.disableAnimationsOf(context) ? 0 : milliseconds;
+      HomeMotion.duration(context, milliseconds).inMilliseconds;
 
   void _onDragStart(DragStartDetails details) {
     if (_busy || !widget.enabled || widget.count < 2) return;
@@ -335,10 +339,8 @@ class _TabSwipeAreaState extends State<TabSwipeArea>
             valueListenable: _offset,
             // child 传进来就不再随位移重建，只有那层 Transform 会重建。
             child: widget.child,
-            builder: (context, offset, child) => Transform.translate(
-              offset: Offset(offset, 0),
-              child: child,
-            ),
+            builder: (context, offset, child) =>
+                Transform.translate(offset: Offset(offset, 0), child: child),
           ),
         );
       },

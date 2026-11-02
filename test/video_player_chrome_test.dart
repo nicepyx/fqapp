@@ -46,6 +46,35 @@ void main() {
     view.resetDevicePixelRatio();
   });
 
+  for (final landscape in [false, true]) {
+    testWidgets(
+      'reduced motion opens and closes episode panel in ${landscape ? 'landscape' : 'portrait'}',
+      (tester) async {
+        final player = FakeNativePlayer()..isPlaying = true;
+        await tester.pumpWidget(
+          _app(player, shortSeries: true, disableAnimations: true),
+        );
+        await tester.pumpAndSettle();
+        if (landscape) await _rotateToLandscape(tester);
+        await tester.tap(
+          find.byKey(
+            ValueKey(landscape ? 'landscape-episodes' : 'player-catalog-bar'),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(find.byKey(const ValueKey('story-episode-0')), findsOneWidget);
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('story-episode-0')), findsNothing);
+        expect(player.playing, isTrue);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await player.dispose();
+      },
+    );
+  }
+
   testWidgets('paused scrubbing stays paused, seek clamps and speed is saved', (
     tester,
   ) async {
@@ -2174,6 +2203,7 @@ Widget _app(
   bool padNewBottomStyle = false,
   bool reverseClearScreen = false,
   bool landscapeLockEnabled = false,
+  bool disableAnimations = false,
   List<EpisodeVariant> qualityVariants = const [],
   String? currentQualityUrl,
   List<EpisodeVariant>? qualitySelections,
@@ -2182,9 +2212,11 @@ Widget _app(
   ValueChanged<DanmakuSettings>? onDanmakuSettingsChanged,
 }) => MaterialApp(
   builder: (context, child) => MediaQuery(
-    data: MediaQuery.of(
-      context,
-    ).copyWith(textScaler: textScaler, padding: padding),
+    data: MediaQuery.of(context).copyWith(
+      textScaler: textScaler,
+      padding: padding,
+      disableAnimations: disableAnimations,
+    ),
     child: child!,
   ),
   home: StreamBuilder<bool>(

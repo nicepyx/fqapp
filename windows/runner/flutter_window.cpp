@@ -29,6 +29,8 @@ bool FlutterWindow::OnCreate() {
   }
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
+  mini_reader_ = std::make_unique<MiniReaderWindow>(
+      GetHandle(), flutter_controller_->engine()->messenger());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
@@ -44,6 +46,7 @@ bool FlutterWindow::OnCreate() {
 
 void FlutterWindow::OnDestroy() {
   destroying_controller_ = true;
+  mini_reader_.reset();
   if (flutter_controller_) {
     auto controller = std::move(flutter_controller_);
     controller.reset();
@@ -56,6 +59,10 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  if (mini_reader_) {
+    const auto result = mini_reader_->HandleMessage(message, wparam);
+    if (result) return *result;
+  }
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_ && !destroying_controller_) {
     std::optional<LRESULT> result =

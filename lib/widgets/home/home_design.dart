@@ -96,6 +96,16 @@ Color homeSheetColor(HomePalette palette) =>
 Color homeSheetCardColor(HomePalette palette) =>
     palette.dark ? palette.soft : palette.surface;
 
+class HomeMotion {
+  HomeMotion._();
+
+  static bool reduced(BuildContext context) =>
+      einkModeNotifier.value || MediaQuery.disableAnimationsOf(context);
+
+  static Duration duration(BuildContext context, int milliseconds) =>
+      reduced(context) ? Duration.zero : Duration(milliseconds: milliseconds);
+}
+
 /// 弹层上缘的一圈发丝线：OLED 下画布与浮层都是近黑，没有它边界仍不明显。
 ///
 /// 只给深色 / OLED：浅色弹层与奶白画布本来就靠 barrier 区分，多一圈线反而
@@ -137,7 +147,7 @@ class _HomePressableState extends State<HomePressable>
   late final _scale = AnimationController.unbounded(vsync: this, value: 1);
 
   void _press(bool pressed) {
-    if (MediaQuery.disableAnimationsOf(context)) {
+    if (HomeMotion.reduced(context)) {
       _scale.stop();
       _scale.value = 1;
       return;
@@ -176,6 +186,10 @@ class _HomePressableState extends State<HomePressable>
           onTapCancel: () => _press(false),
           borderRadius: widget.borderRadius,
           splashColor: HomePalette.accent.withValues(alpha: 0.08),
+          hoverColor: HomePalette.of(context).ink.withValues(alpha: 0.045),
+          focusColor: HomePalette.of(
+            context,
+          ).accentText.withValues(alpha: 0.12),
           highlightColor: Colors.transparent,
           child: widget.child,
         ),
@@ -204,16 +218,16 @@ class HomeEntrance extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!animate || MediaQuery.disableAnimationsOf(context)) return child;
+    if (!animate || HomeMotion.reduced(context)) return child;
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
-      duration: Duration(milliseconds: 380 + index.clamp(0, 5) * 45),
+      duration: Duration(milliseconds: 220 + index.clamp(0, 5) * 18),
       curve: Curves.easeOutCubic,
       child: child,
       builder: (context, value, child) => Opacity(
         opacity: 0.5 + value * 0.5,
         child: Transform.translate(
-          offset: Offset(0, 18 * (1 - value)),
+          offset: Offset(0, 8 * (1 - value)),
           child: child,
         ),
       ),

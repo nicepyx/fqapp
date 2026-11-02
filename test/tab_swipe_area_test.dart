@@ -253,7 +253,7 @@ void main() {
     key.currentState!.goTo(1);
     await tester.pump();
     // 下一个标签从右侧入场：位移为正，且还没归位。
-    expect(_offsetX(tester), greaterThan(50));
+    expect(_offsetX(tester), inExclusiveRange(0, 49));
     await tester.pumpAndSettle();
     expect(_offsetX(tester), 0);
     expect(find.text('tab 1'), findsOneWidget);

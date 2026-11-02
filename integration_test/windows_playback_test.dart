@@ -1,7 +1,9 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,10 +13,12 @@ import 'package:fqapp/pages/audio_page.dart';
 import 'package:fqapp/pages/player_page.dart';
 import 'package:fqapp/services/app_log.dart';
 import 'package:fqapp/services/desktop_platform.dart';
+import 'package:fqapp/services/desktop_mini_reader.dart';
 import 'package:fqapp/services/native_player.dart';
 import 'package:fqapp/widgets/desktop_app_frame.dart';
 
 import '../test/support/fakes.dart' show MemoryReaderStore;
+import 'support/desktop_video_tools_checks.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -61,12 +65,20 @@ void main() {
     AppLog.instance.install();
     await DesktopPlatform.instance.initialize();
     final player = NativePlayer();
+    final capture = GlobalKey();
+    final playback = GlobalKey();
     await tester.pumpWidget(
       MaterialApp(
         navigatorKey: DesktopPlatform.navigatorKey,
-        builder: (context, child) => AudioPlaybackScope(
-          navigatorKey: DesktopPlatform.navigatorKey,
-          child: DesktopAppFrame(child: child!),
+        builder: (context, child) => RepaintBoundary(
+          key: capture,
+          child: DesktopAppFrame(
+            child: AudioPlaybackScope(
+              key: playback,
+              navigatorKey: DesktopPlatform.navigatorKey,
+              child: child!,
+            ),
+          ),
         ),
         home: PlayerPage(
           bookId: 'desktop-native-test',
@@ -127,6 +139,69 @@ void main() {
       'continuous playback after seek',
     );
     expect(player.playing, isTrue);
+    await player.pause();
+    await player.seek(Duration.zero);
+    await player.play();
+    await waitFor(
+      () => player.position.inMilliseconds < 2000,
+      'restart fixture',
+    );
+    final texture = player.textureId;
+    await tester.tap(find.byKey(const ValueKey('video-mini-window')));
+    final mini = DesktopMiniReaderController.instance;
+    await waitFor(() => mini.videoActive, 'enter video mini window');
+    expect(find.byKey(const ValueKey('desktop-navigation')), findsNothing);
+    expect(find.byKey(const ValueKey('desktop-mini-video')), findsOneWidget);
+    expect(player.textureId, texture);
+    await waitFor(
+      () => player.position.inMilliseconds > 1000,
+      'mini playback advances',
+    );
+    await mini.toggleHidden();
+    await waitFor(
+      () => mini.hidden && !player.playWhenReady,
+      'native hide pauses playback',
+    );
+    await mini.toggleHidden();
+    await waitFor(
+      () => !mini.hidden && player.playWhenReady,
+      'native reveal resumes playback',
+    );
+    await player.pause();
+    await waitFor(() => !player.playing, 'pause for frame capture');
+    await verifyDesktopVideoTools(tester, player);
+    ScaffoldMessenger.of(
+      tester.element(find.byKey(const ValueKey('desktop-mini-video'))),
+    ).removeCurrentSnackBar();
+    await tester.pump(const Duration(milliseconds: 200));
+    final boundary =
+        capture.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+    final image = await boundary.toImage(pixelRatio: 1);
+    final pixels = (await image.toByteData(
+      format: ui.ImageByteFormat.rawRgba,
+    ))!.buffer.asUint8List();
+    var colorful = 0;
+    for (var i = 0; i < pixels.length; i += 4) {
+      if ((pixels[i] - pixels[i + 1]).abs() > 40 ||
+          (pixels[i + 1] - pixels[i + 2]).abs() > 40) {
+        colorful++;
+      }
+    }
+    expect(
+      colorful,
+      greaterThan(1000),
+      reason: 'The decoded color fixture must be visible',
+    );
+    final png = await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    final screenshot = File('build/validation/windows-mini-video.png');
+    await screenshot.parent.create(recursive: true);
+    await screenshot.writeAsBytes(png!.buffer.asUint8List());
+    await tester.tap(find.byKey(const ValueKey('mini-video-exit')));
+    await waitFor(() => !mini.active, 'restore normal window');
+    expect(player.textureId, texture);
+    expect(player.playWhenReady, isFalse);
+    await player.play();
     final report = File('build/validation/windows-widget-player.json');
     await report.parent.create(recursive: true);
     await report.writeAsString(
@@ -141,6 +216,16 @@ void main() {
           'slider seek preserves pause intent',
           'resume through production controls',
           'slider seek while playing continues playback',
+          'mini mode preserves the player and texture',
+          'video continues in the native mini window',
+          'native hide pauses and reveal resumes playback',
+          'decoded fixture pixels are visible in the mini window',
+          'night compressor filter applies and clears',
+          'independent thumbnail leaves paused video position unchanged',
+          'media card saves an actual JPEG and playable WAV',
+          'subtitle import displays dialogue on the picture',
+          'temporary speed restores on release',
+          'restore keeps a manually paused video paused',
         ],
         'positionMs': player.position.inMilliseconds,
         'lifecycle': tester.binding.lifecycleState.toString(),

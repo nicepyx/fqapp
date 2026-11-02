@@ -131,7 +131,9 @@ class _HomePageState extends ConsumerState<HomePage> {
         ..addListener(_onLocalDataChanged);
     }
     // 关闭「继续阅读」是个持久化开关，加载完成后要重画这一行。
-    HomeContinuePreferences.instance.dismissedId.addListener(_onLocalDataChanged);
+    HomeContinuePreferences.instance.dismissedId.addListener(
+      _onLocalDataChanged,
+    );
     unawaited(HomeContinuePreferences.instance.load());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) ref.read(homeProvider.notifier).load();
@@ -277,6 +279,9 @@ class _HomePageState extends ConsumerState<HomePage> {
                           onSearch: _openSearch,
                           onCategory: _openCategory,
                           cueLoader: widget.cueLoader,
+                          onRefresh: isWindowsDesktop ? _refresh : null,
+                          refreshing: state.isLoading,
+                          showSearch: !isWindowsDesktop,
                         ),
                       ),
                       SliverPersistentHeader(

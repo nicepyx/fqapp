@@ -46,7 +46,7 @@ try {
     }
     Invoke-Checked 'python' @('scripts/collect_windows_licenses.py')
     $bundle = Join-Path $buildRoot 'build\windows\x64\runner\Release'
-    foreach ($required in @('fqapp.exe', 'flutter_windows.dll', 'fqapi_core.dll', 'data\app.so')) {
+    foreach ($required in @('fqapp.exe', 'flutter_windows.dll', 'fqapi_core.dll', 'ffmpeg.exe', 'data\app.so')) {
         if (-not (Test-Path -LiteralPath (Join-Path $bundle $required))) { throw "Missing bundle file: $required" }
     }
     Copy-Item -LiteralPath (Join-Path $repoRoot 'LICENSE') -Destination (Join-Path $bundle 'LICENSE.txt')

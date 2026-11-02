@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../services/desktop_platform.dart';
 import 'home_design.dart';
 
 // The home shelf: one card language, one gutter, one rhythm.
@@ -37,6 +38,9 @@ double homeBottomClearance(BuildContext context) =>
 /// 宽里只剩四五个字。平板与桌面按同一套宽度断点放宽。
 int homeShelfColumns(BuildContext context, double width) {
   final largeType = MediaQuery.textScalerOf(context).scale(15) > 22;
+  if (isWindowsDesktop) {
+    return (width / (largeType ? 220 : 180)).floor().clamp(2, 8);
+  }
   if (largeType && width < 640) return 2;
   if (width < 360) return 2;
   if (width < 640) return 3;
@@ -66,11 +70,12 @@ SliverGridDelegate homeShelfDelegate(BuildContext context, double width) {
 double homeCardExtent(
   BuildContext context,
   double cardWidth,
-  TextScaler scaler,
-) =>
+  TextScaler scaler, {
+  int titleMaxLines = 2,
+}) =>
     cardWidth * 1.4 +
     8 +
-    scaler.scale(15) * 1.35 * 2 +
+    scaler.scale(15) * 1.35 * titleMaxLines +
     4 +
     scaler.scale(11) * 1.3 +
     2;

@@ -23,11 +23,21 @@ import 'library_backup_page.dart';
 import 'settings_category_page.dart';
 import 'system_tts_settings_page.dart';
 import 'text_replacement_page.dart';
+import 'desktop_shortcuts_page.dart';
 
 /// Settings home: a list of category entries (PiliPlus multi-level
 /// navigation). Each category opens its own CommonSetting-style page.
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
+  static const categoryColors = [
+    Color(0xFFEF5038),
+    Color(0xFF14B8A6),
+    Color(0xFF8B5CF6),
+    Color(0xFFF59E0B),
+    Color(0xFF3B82F6),
+    Color(0xFF10B981),
+    Color(0xFF6366F1),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -146,16 +156,7 @@ class SettingsPage extends StatelessWidget {
         pageBuilder: (_) => const AboutPage(),
         items: const [],
       ),
-    ];
-
-    const categoryColors = [
-      Color(0xFFEF5038), // 外观
-      Color(0xFF14B8A6), // 阅读
-      Color(0xFF8B5CF6), // 听书
-      Color(0xFFF59E0B), // 短剧
-      Color(0xFF3B82F6), // 数据
-      Color(0xFF10B981), // 服务
-      Color(0xFF6366F1), // 关于
+      if (isWindowsDesktop) desktopShortcutCategory,
     ];
 
     return Scaffold(
@@ -619,16 +620,12 @@ class SettingsPage extends StatelessWidget {
                   RadioListTile<AudioRateEngine>(
                     value: value,
                     title: Text(value.label),
-                    subtitle: Text(
-                      switch (value) {
-                        AudioRateEngine.wsola =>
-                          '与番茄官方同一套算法（FFmpeg atempo），高倍速听感最接近原声（默认）',
-                        AudioRateEngine.platform =>
-                          '系统混音器变速，不依赖本应用的 native 库',
-                        AudioRateEngine.builtIn =>
-                          'Media3 内建 Sonic，保底用（改动前的行为）',
-                      },
-                    ),
+                    subtitle: Text(switch (value) {
+                      AudioRateEngine.wsola =>
+                        '与番茄官方同一套算法（FFmpeg atempo），高倍速听感最接近原声（默认）',
+                      AudioRateEngine.platform => '系统混音器变速，不依赖本应用的 native 库',
+                      AudioRateEngine.builtIn => 'Media3 内建 Sonic，保底用（改动前的行为）',
+                    }),
                   ),
               ],
             ),

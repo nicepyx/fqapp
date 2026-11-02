@@ -54,7 +54,7 @@ class HomeTabBarDelegate extends SliverPersistentHeaderDelegate {
   // 的距离按视觉收紧（与区块头 margin 联动，见 _rankStripTopMargin）。
   static const double bottomPadding = 6;
   static const double selectedSize = 17;
-  static const double unselectedSize = 15;
+  static const double unselectedSize = 17;
   static const double tabSpacing = 20;
 
   /// 条带的左右栏距：与 [HomeHero] 搜索框一致（官方 20/13 的不对称见类注释）。
@@ -101,9 +101,7 @@ class HomeTabBarDelegate extends SliverPersistentHeaderDelegate {
     bool overlapsContent,
   ) {
     final palette = HomePalette.of(context);
-    final duration = MediaQuery.disableAnimationsOf(context)
-        ? Duration.zero
-        : const Duration(milliseconds: 180);
+    final duration = HomeMotion.duration(context, 160);
     // pinned header 的 layoutExtent 必须等于 extent，否则 Flutter 报
     // "layoutExtent exceeds paintExtent"。字号随 textScale 长大时 extent
     // 同步变大，所以这里的高度必须从 extent 反推，不能用写死的 38。
@@ -126,7 +124,7 @@ class HomeTabBarDelegate extends SliverPersistentHeaderDelegate {
                   children: [
                     for (var index = 0; index < categories.length; index++) ...[
                       if (index > 0) SizedBox(width: gap),
-                      _tab(index, rowHeight, duration, palette),
+                      _tab(context, index, rowHeight, duration, palette),
                     ],
                   ],
                 ),
@@ -162,7 +160,7 @@ class HomeTabBarDelegate extends SliverPersistentHeaderDelegate {
       final painter = TextPainter(
         text: TextSpan(
           text: categories[index].label,
-          style: _labelStyle(index == selectedIndex, palette),
+          style: _labelStyle(context, index == selectedIndex, palette),
         ),
         textDirection: textDirection,
         textScaler: scaler,
@@ -178,14 +176,19 @@ class HomeTabBarDelegate extends SliverPersistentHeaderDelegate {
     return tabSpacing + (spare / gaps).clamp(0.0, maxExtraSpacing);
   }
 
-  TextStyle _labelStyle(bool selected, HomePalette palette) => TextStyle(
+  TextStyle _labelStyle(
+    BuildContext context,
+    bool selected,
+    HomePalette palette,
+  ) => Theme.of(context).textTheme.titleMedium!.copyWith(
     fontSize: selected ? selectedSize : unselectedSize,
-    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+    fontWeight: FontWeight.w600,
     color: selected ? palette.ink : palette.muted,
     height: 1,
   );
 
   Widget _tab(
+    BuildContext context,
     int index,
     double rowHeight,
     Duration duration,
@@ -199,39 +202,44 @@ class HomeTabBarDelegate extends SliverPersistentHeaderDelegate {
       label: category.label,
       excludeSemantics: true,
       onTap: () => onSelect(index),
-      child: GestureDetector(
-        key: ValueKey('home_category_$index'),
-        behavior: HitTestBehavior.opaque,
-        onTap: () => onSelect(index),
-        // 官方书城顶栏不画指示器：`alx.xml` 把 `aup`(指示器高度) 设成 0，
-        // `SlidingTabLayout.onDraw` 只在 `s > 0` 时绘制。
-        //
-        // 选中态只差「字号 + 透明度」：`s0()` 对每一项都调 `setTypeface(a(1))`
-        // （`R5 = getInt(53, 2)` 让 `z` 恒为真），所以两态都是粗体；未选中项再叠加
-        // `alpha = a6` = 0.4（`avr`，`L2048 getFloat(55, 0.4f)`）。
-        child: SizedBox(
-          height: rowHeight,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              AnimatedDefaultTextStyle(
-                duration: duration,
-                curve: Curves.easeOutCubic,
-                style: _labelStyle(selected, palette),
-                child: Text(category.label),
-              ),
-              const SizedBox(height: 5),
-              AnimatedContainer(
-                duration: duration,
-                curve: Curves.easeOutCubic,
-                width: 16,
-                height: 2.5,
-                decoration: BoxDecoration(
-                  color: selected ? palette.ink : Colors.transparent,
-                  borderRadius: BorderRadius.circular(2),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: ValueKey('home_category_$index'),
+          onTap: () => onSelect(index),
+          borderRadius: BorderRadius.circular(8),
+          hoverColor: palette.ink.withValues(alpha: .045),
+          focusColor: palette.accentText.withValues(alpha: .12),
+          // 官方书城顶栏不画指示器：`alx.xml` 把 `aup`(指示器高度) 设成 0，
+          // `SlidingTabLayout.onDraw` 只在 `s > 0` 时绘制。
+          //
+          // 选中态只差「字号 + 透明度」：`s0()` 对每一项都调 `setTypeface(a(1))`
+          // （`R5 = getInt(53, 2)` 让 `z` 恒为真），所以两态都是粗体；未选中项再叠加
+          // `alpha = a6` = 0.4（`avr`，`L2048 getFloat(55, 0.4f)`）。
+          child: SizedBox(
+            height: rowHeight,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AnimatedDefaultTextStyle(
+                  duration: duration,
+                  curve: Curves.easeOutCubic,
+                  style: _labelStyle(context, selected, palette),
+                  child: Text(category.label),
                 ),
-              ),
-            ],
+                const SizedBox(height: 5),
+                AnimatedContainer(
+                  duration: duration,
+                  curve: Curves.easeOutCubic,
+                  width: 16,
+                  height: 2.5,
+                  decoration: BoxDecoration(
+                    color: selected ? palette.ink : Colors.transparent,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

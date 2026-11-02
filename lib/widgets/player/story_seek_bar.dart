@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../home/home_design.dart';
 
 /// A relative drag keeps pressing the track from jumping to that position.
 /// Semantics provides the same action to keyboard/accessibility users.
@@ -107,7 +108,7 @@ class _StorySeekBarState extends State<StorySeekBar> {
             height: 30,
             child: TweenAnimationBuilder<double>(
               tween: Tween(end: widget.seeking ? 1 : 0),
-              duration: const Duration(milliseconds: 300),
+              duration: HomeMotion.duration(context, 140),
               builder: (context, emphasis, _) => CustomPaint(
                 painter: _SeekPainter(
                   widget.value,

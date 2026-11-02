@@ -76,10 +76,7 @@ class _ShelfCover extends StatelessWidget {
   }
 }
 
-/// 右上角进度角标：accent 渐变小胶囊，贴边内嵌 4dp。
-///
-/// 角标显示调用方检测到的「更新」或阅读进度。
-/// 白字是品牌渐变上的固定前景，允许硬编码。
+/// 进度保持中性，更新状态使用品牌色，避免整排封面都出现强色块。
 class _ProgressBadge extends StatelessWidget {
   final String text;
 
@@ -87,25 +84,29 @@ class _ProgressBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = HomePalette.of(context);
     return ConstrainedBox(
       constraints: const BoxConstraints(minWidth: 26),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [HomePalette.accent, Color(0xFFE4432E)],
-          ),
+          color: palette.eink
+              ? Colors.white
+              : text.contains('更新')
+              ? HomePalette.accentStrong
+              : const Color(0xCC202124),
+          border: palette.eink ? Border.all(color: Colors.black) : null,
           borderRadius: BorderRadius.circular(4),
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
           child: Text(
             text,
             textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.clip,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 9,
+            style: TextStyle(
+              color: palette.eink ? Colors.black : Colors.white,
+              fontSize: 10,
               height: 1.2,
               fontWeight: FontWeight.w600,
             ),
@@ -170,7 +171,7 @@ class _ShelfCoverImage extends StatelessWidget {
         imageUrl: value,
         fit: BoxFit.cover,
         memCacheWidth: decodeWidth,
-        fadeInDuration: const Duration(milliseconds: 150),
+        fadeInDuration: HomeMotion.duration(context, 150),
         placeholder: (_, _) => fallback,
         errorWidget: (_, _, _) => fallback,
       );
@@ -231,6 +232,7 @@ class _DefaultCover extends StatelessWidget {
           authorColor: palette.muted,
           title: cleaned.title,
           author: cleaned.author,
+          fontFamily: Theme.of(context).textTheme.bodyMedium?.fontFamily,
         ),
       ),
     );
@@ -295,6 +297,7 @@ class _DefaultCoverPainter extends CustomPainter {
   final Color authorColor;
   final String title;
   final String author;
+  final String? fontFamily;
 
   const _DefaultCoverPainter({
     required this.background,
@@ -303,6 +306,7 @@ class _DefaultCoverPainter extends CustomPainter {
     required this.authorColor,
     required this.title,
     required this.author,
+    required this.fontFamily,
   });
 
   @override
@@ -406,9 +410,9 @@ class _DefaultCoverPainter extends CustomPainter {
         style: TextStyle(
           color: titleColor,
           fontSize: titleFontSize,
+          fontFamily: fontFamily,
           fontWeight: FontWeight.w700,
           height: 1.25,
-          letterSpacing: 0.3,
         ),
       ),
       textAlign: TextAlign.center,
@@ -427,8 +431,8 @@ class _DefaultCoverPainter extends CustomPainter {
           style: TextStyle(
             color: authorColor.withValues(alpha: 0.85),
             fontSize: authorFontSize,
+            fontFamily: fontFamily,
             fontWeight: FontWeight.w500,
-            letterSpacing: 0.2,
           ),
         ),
         textAlign: TextAlign.center,
@@ -534,8 +538,8 @@ class _DefaultCoverPainter extends CustomPainter {
         style: TextStyle(
           color: accentColor.withValues(alpha: 0.65),
           fontSize: 6.5,
+          fontFamily: fontFamily,
           fontWeight: FontWeight.w600,
-          letterSpacing: 1.0,
         ),
       ),
       textAlign: TextAlign.center,
@@ -554,6 +558,7 @@ class _DefaultCoverPainter extends CustomPainter {
         style: TextStyle(
           color: titleColor,
           fontSize: 8.5,
+          fontFamily: fontFamily,
           fontWeight: FontWeight.w700,
           height: 1.2,
         ),
@@ -578,7 +583,8 @@ class _DefaultCoverPainter extends CustomPainter {
       oldDelegate.titleColor != titleColor ||
       oldDelegate.authorColor != authorColor ||
       oldDelegate.title != title ||
-      oldDelegate.author != author;
+      oldDelegate.author != author ||
+      oldDelegate.fontFamily != fontFamily;
 }
 
 // ---------------------------------------------------------------------------
@@ -621,6 +627,7 @@ class BookshelfGridCard extends StatelessWidget {
       label: item.title,
       child: GestureDetector(
         onLongPress: onLongPress,
+        onSecondaryTap: onLongPress,
         child: HomePressable(
           onTap: onTap,
           semanticLabel: item.title,
@@ -655,7 +662,7 @@ class BookshelfGridCard extends StatelessWidget {
                         ),
                     ],
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: ShelfTokens.gridTitleSpacing),
                   SizedBox(
                     height: titleHeight,
                     width: double.infinity,
@@ -665,7 +672,7 @@ class BookshelfGridCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: ShelfTokens.titleGrid,
-                        fontWeight: FontWeight.w500,
+                        fontWeight: FontWeight.w600,
                         height: ShelfTokens.titleLineHeight,
                         color: palette.ink,
                       ),
@@ -697,7 +704,7 @@ class BookshelfGridCard extends StatelessWidget {
   }
 }
 
-/// 双列条目：整格是一张卡（surface 底、radius 14、line 描边），上半封面
+/// 双列条目：整格是一张卡（surface 底、line 描边），上半封面
 /// （满格宽减 padding、比 1.4），下半 标题 1 行 + 副信息 1 行 + 类型标签。
 ///
 /// 取消了官方的封面/信息卡 84dp 重叠布局：重叠栈在无障碍大字号下需要手工
@@ -738,6 +745,7 @@ class BookshelfDoubleCard extends StatelessWidget {
       label: item.title,
       child: GestureDetector(
         onLongPress: onLongPress,
+        onSecondaryTap: onLongPress,
         child: HomePressable(
           onTap: onTap,
           semanticLabel: item.title,

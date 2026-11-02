@@ -1,7 +1,10 @@
 import 'package:flutter/gestures.dart';
 import '../services/desktop_platform.dart';
 import '../services/audio_floating_routes.dart';
-import '../widgets/desktop_chapter_sidebar.dart';
+import '../services/desktop_mini_reader.dart';
+import '../widgets/desktop_reader_frame.dart';
+import '../widgets/home/home_design.dart';
+import '../widgets/reader/desktop_mini_reader.dart';
 import 'dart:async';
 import 'dart:collection';
 import 'package:flutter/material.dart';
@@ -136,6 +139,7 @@ class ReaderPage extends StatefulWidget {
 // Note: 菜单覆盖层与正文布局分离；见
 // .agents/notes/implemented/feature/2026-09-10-reader-interface.md
 class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
+  final _miniReader = DesktopMiniReaderController.instance;
   late int _index;
   final ScrollController _scrollController = ScrollController();
   Timer? _saveTimer;
@@ -291,6 +295,11 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   ///（颜色再由 [ReaderThemeColors.isOled] 降到 #000000），退出深色后回到
   /// 原预设。
   ReaderThemePreset get _effectivePreset {
+    if (_miniReader.readerActive) {
+      return _miniReader.lightText
+          ? ReaderThemePreset.dark
+          : ReaderThemePreset.light;
+    }
     if (einkModeNotifier.value) return ReaderThemePreset.eink;
     if (oledActive()) return ReaderThemePreset.dark;
     return _preferences.themePreset;
@@ -304,6 +313,12 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   /// textColor（默认米白 #292724）——实测设备上正文主色 RGB(41,39,36)，
   /// 墨水屏把它量化成明显发灰的一档。保存的预设不动，关闭墨水屏即恢复。
   ReaderPreferences get _displayPreferences {
+    if (_miniReader.readerActive) {
+      return _preferences.copyWith(
+        themePreset: _effectivePreset,
+        showParagraphBubbles: false,
+      );
+    }
     if (einkModeNotifier.value) {
       return _preferences.copyWith(
         themePreset: ReaderThemePreset.eink,
@@ -1631,6 +1646,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    if (_miniReader.readerActive) unawaited(_miniReader.leave());
     _followPoll?.cancel();
     _followPoll = null;
     _chapterRequest?.cancel();
@@ -2239,7 +2255,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         _layoutMode == _preferences.pageMode &&
         _layoutIdeasRevision == _ideasRevision &&
         _layoutUnderlineRevision == _underlineRevision &&
-        _layoutBubblesVisible == _preferences.showParagraphBubbles) {
+        _layoutBubblesVisible == _displayPreferences.showParagraphBubbles) {
       return _chapterLayout!;
     }
     // Reuse the measured text layout only when nothing that feeds it changed.
@@ -2248,7 +2264,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     // The bubble switch gates the data itself (not just the builder):
     // the layout reserves placeholder space from bubbleCount, so a null
     // builder alone would leave an empty gap at the paragraph end.
-    final bubblesVisible = _preferences.showParagraphBubbles;
+    final bubblesVisible = _displayPreferences.showParagraphBubbles;
     final reusable =
         _chapterLayout?.spec == spec &&
         _layoutIdeasRevision == _ideasRevision &&
@@ -2636,6 +2652,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   }
 
   void _toggleControls() {
+    if (_miniReader.readerActive) return;
     _stopAutoTurn();
     if (!_controlsVisible) {
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -2705,8 +2722,13 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       useSafeArea: true,
       backgroundColor: Colors.transparent,
       clipBehavior: Clip.antiAlias,
+      constraints: const BoxConstraints(maxWidth: 640),
+      sheetAnimationStyle: AnimationStyle(
+        duration: HomeMotion.duration(context, 200),
+        reverseDuration: HomeMotion.duration(context, 160),
+      ),
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
       ),
       builder: (context) => ReaderAppearanceSheet(
         initialValue: _preferences,
@@ -3126,6 +3148,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   void _desktopScroll(PointerSignalEvent signal) {
     if (!_paged ||
+        (_miniReader.readerActive && _miniReader.menuOpen) ||
         signal is! PointerScrollEvent ||
         signal.scrollDelta.dy == 0) {
       return;
@@ -3141,76 +3164,35 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   Widget _buildReader(BuildContext context) {
     if (!isWindowsDesktop) return _buildReaderSurface(context);
-    return LayoutBuilder(
-      builder: (context, bounds) => ColoredBox(
-        color: _effectivePreset.backgroundColor,
-        child: Row(
-          children: [
-            if (bounds.maxWidth >= 1000)
-              DesktopChapterSidebar(
-                chapters: widget.chapters,
-                currentIndex: _index,
-                onSelected: (index) => unawaited(_jumpToChapter(index)),
-              ),
-            Expanded(
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 880),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Focus(
-                        autofocus: true,
-                        onKeyEvent: (node, event) {
-                          if (event is! KeyDownEvent ||
-                              FocusManager.instance.primaryFocus?.context
-                                      ?.findAncestorWidgetOfExactType<
-                                        EditableText
-                                      >() !=
-                                  null) {
-                            return KeyEventResult.ignored;
-                          }
-                          final key = event.logicalKey;
-                          if ([
-                            LogicalKeyboardKey.arrowRight,
-                            LogicalKeyboardKey.pageDown,
-                          ].contains(key)) {
-                            unawaited(_turnPage(1));
-                            return KeyEventResult.handled;
-                          }
-                          if ([
-                            LogicalKeyboardKey.arrowLeft,
-                            LogicalKeyboardKey.pageUp,
-                          ].contains(key)) {
-                            unawaited(_turnPage(-1));
-                            return KeyEventResult.handled;
-                          }
-                          return KeyEventResult.ignored;
-                        },
-                        child: Listener(
-                          onPointerSignal: _desktopScroll,
-                          child: _buildReaderSurface(context),
-                        ),
-                      ),
-                      Positioned.fill(
-                        child: IgnorePointer(
-                          child: ValueListenableBuilder<double>(
-                            valueListenable: DesktopPlatform.readerBrightness,
-                            builder: (_, brightness, _) => ColoredBox(
-                              color: Colors.black.withValues(
-                                alpha: 1 - brightness,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
+    return ListenableBuilder(
+      listenable: _miniReader,
+      builder: (context, _) => DesktopReaderFrame(
+        chapters: widget.chapters,
+        currentIndex: _index,
+        backgroundColor: _effectivePreset.backgroundColor,
+        onChapterSelected: (index) => unawaited(_jumpToChapter(index)),
+        onTurnPage: _turnPage,
+        onPointerSignal: _desktopScroll,
+        onDirectory: () => unawaited(_showDirectory()),
+        onAppearance: () => unawaited(_showAppearanceSettings()),
+        onMini: () {
+          _stopAutoTurn();
+          _closeSelectionBar(clearSelection: true);
+          setState(() => _controlsVisible = false);
+          unawaited(_miniReader.enter());
+        },
+        child: _miniReader.readerActive
+            ? DesktopMiniReader(
+                title: _chapter.title,
+                progress: _chapterProgress(),
+                fontSize: _preferences.fontSize,
+                onFontSizeChanged: (size) =>
+                    _previewPreferences(_preferences.copyWith(fontSize: size)),
+                onTurnPage: _turnPage,
+                onDirectory: _showDirectory,
+                child: _buildContent(_effectivePreset, EdgeInsets.zero),
+              )
+            : _buildReaderSurface(context),
       ),
     );
   }
@@ -3355,14 +3337,13 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         excluding: !_controlsVisible,
         child: AnimatedSwitcher(
           // 墨水屏：菜单滑入/淡出动画也会留残影，直接跳变。
-          duration: einkModeNotifier.value
-              ? Duration.zero
-              : const Duration(milliseconds: 180),
+          duration: HomeMotion.duration(context, 180),
+          reverseDuration: HomeMotion.duration(context, 120),
           switchInCurve: Curves.easeOutCubic,
           switchOutCurve: Curves.easeInCubic,
           transitionBuilder: (child, animation) => SlideTransition(
             position: Tween<Offset>(
-              begin: Offset(0, top ? -1 : 1),
+              begin: Offset(0, top ? -.15 : .15),
               end: Offset.zero,
             ).animate(animation),
             child: FadeTransition(opacity: animation, child: child),
@@ -3448,6 +3429,14 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                 );
               },
             ),
+            if (isWindowsDesktop)
+              DesktopMiniReaderButton(
+                onEnter: () {
+                  _stopAutoTurn();
+                  _closeSelectionBar(clearSelection: true);
+                  setState(() => _controlsVisible = false);
+                },
+              ),
             IconButton(
               tooltip: '收起阅读菜单',
               onPressed: _toggleControls,
@@ -3569,12 +3558,17 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                             eink: einkModeNotifier.value,
                             instantSwipeTurn: _preferences.instantSwipeTurn,
                           ),
-                          turnStyle: einkEffectiveTurnStyle(
-                            eink: einkModeNotifier.value,
-                            instantSwipeTurn: _preferences.instantSwipeTurn,
-                            pageTurnStyle: _preferences.pageTurnStyle,
-                          ),
-                          backgroundColor: preset.backgroundColor,
+                          turnStyle: _miniReader.readerActive
+                              ? ReaderPageTurnStyle.none
+                              : einkEffectiveTurnStyle(
+                                  eink: einkModeNotifier.value,
+                                  instantSwipeTurn:
+                                      _preferences.instantSwipeTurn,
+                                  pageTurnStyle: _preferences.pageTurnStyle,
+                                ),
+                          backgroundColor: _miniReader.readerActive
+                              ? Colors.transparent
+                              : preset.backgroundColor,
                           endPage: _index == widget.chapters.length - 1
                               ? _buildChapterEndPage(preset)
                               : null,
@@ -3805,7 +3799,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     final endBucket = _chapterEndParagraph();
     final commentCount = _ideas.total;
     return ColoredBox(
-      color: preset.backgroundColor,
+      color: _miniReader.readerActive
+          ? Colors.transparent
+          : preset.backgroundColor,
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -3815,7 +3811,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
               style: TextStyle(color: preset.mutedTextColor, fontSize: 13),
             ),
             const SizedBox(height: 20),
-            if (commentCount > 0 && endBucket != null)
+            if (!_miniReader.readerActive &&
+                commentCount > 0 &&
+                endBucket != null)
               FilledButton.tonal(
                 key: const ValueKey('reader-chapter-comments'),
                 onPressed: () =>

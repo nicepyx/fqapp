@@ -1,6 +1,8 @@
 import '../services/desktop_platform.dart';
 import '../widgets/desktop_chapter_sidebar.dart';
 import 'dart:async';
+import '../services/desktop_shortcuts.dart';
+import '../widgets/desktop_shortcut_scope.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -550,7 +552,7 @@ class _AudioPageState extends State<AudioPage> {
         (detail?.author.name.isNotEmpty ?? false) ||
         detail?.title.isNotEmpty == true;
     // Windows 桌面端用独立版式；它只需要 tones，上面这些局部变量先算好并不吃亏。
-    if (isWindowsDesktop) return _desktopAudio(palette, chapter, tones);
+    if (isWindowsDesktop) return _desktopAudioKeys(palette, chapter, tones);
 
     // 官方整页底色/字色都取自封面（见 audio_page_theme.dart）。
     final pageDark = palette.dark;
@@ -576,6 +578,27 @@ class _AudioPageState extends State<AudioPage> {
       ),
     );
   }
+
+  Widget _desktopAudioKeys(
+    HomePalette palette,
+    Chapter chapter,
+    List<AudioTone> tones,
+  ) => DesktopShortcutScope(
+    group: DesktopShortcutGroup.audio,
+    actions: {
+      DesktopCommand.audioPlay: () => unawaited(c._togglePlayback()),
+      DesktopCommand.audioBack: () =>
+          unawaited(c._seekTo(c._position.value - const Duration(seconds: 15))),
+      DesktopCommand.audioForward: () =>
+          unawaited(c._seekTo(c._position.value + const Duration(seconds: 15))),
+      if (c._index > 0)
+        DesktopCommand.audioPrevious: () =>
+            unawaited(c._openChapter(c._index - 1)),
+      if (c._index < c._chapters.length - 1)
+        DesktopCommand.audioNext: () => unawaited(c._openChapter(c._index + 1)),
+    },
+    child: _desktopAudio(palette, chapter, tones),
+  );
 
   Widget _desktopAudio(
     HomePalette palette,

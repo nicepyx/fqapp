@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_lucide/flutter_lucide.dart';
 
 import '../../services/reader_preferences.dart';
+import '../home/home_design.dart';
 import 'reader_theme.dart';
 
 /// Official-shape reading menu. Local-only books omit online listening and
@@ -78,9 +79,9 @@ class _ReaderControlsState extends State<ReaderControls> {
       data: preset.theme(Theme.of(context)),
       child: Material(
         color: preset.panelColor,
-        elevation: 16,
-        shadowColor: Colors.black38,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+        elevation: 8,
+        shadowColor: Colors.black26,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
         clipBehavior: Clip.antiAlias,
         child: Container(
           decoration: BoxDecoration(
@@ -97,51 +98,74 @@ class _ReaderControlsState extends State<ReaderControls> {
             constraints: BoxConstraints(
               maxHeight: MediaQuery.sizeOf(context).height * 0.62,
             ),
-            child: SingleChildScrollView(
-              child: SafeArea(
-                top: false,
-                minimum: const EdgeInsets.fromLTRB(10, 10, 10, 8),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (_settingsOpen) ...[
-                      _chapterSeek(preset),
-                      if (widget.deviceAvailable) _brightness(preset, level),
-                      _extraActions(preset),
-                      const SizedBox(height: 6),
-                    ],
-                    Row(
-                      children: [
-                        _Action(
-                          icon: LucideIcons.book_open,
-                          label: '目录',
-                          onTap: widget.onDirectory,
-                        ),
-                        _Action(
-                          icon: preset.isDark
-                              ? LucideIcons.sun
-                              : LucideIcons.moon,
-                          label: preset.isDark ? '日间' : '夜间',
-                          onTap: widget.onNight,
-                        ),
-                        if (widget.showListening)
-                          _Action(
-                            icon: LucideIcons.headphones,
-                            label: '听书',
-                            onTap: widget.onListen,
-                          ),
-                        _Action(
-                          key: const ValueKey('reader-settings'),
-                          icon: LucideIcons.sliders_horizontal,
-                          label: '设置',
-                          selected: _settingsOpen,
-                          onTap: () =>
-                              setState(() => _settingsOpen = !_settingsOpen),
-                        ),
-                      ],
+            child: SafeArea(
+              top: false,
+              minimum: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: SingleChildScrollView(
+                      child: AnimatedSize(
+                        duration: preset.isEink
+                            ? Duration.zero
+                            : HomeMotion.duration(context, 160),
+                        reverseDuration: preset.isEink
+                            ? Duration.zero
+                            : HomeMotion.duration(context, 120),
+                        alignment: Alignment.bottomCenter,
+                        curve: Curves.easeOutCubic,
+                        child: _settingsOpen
+                            ? Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _chapterSeek(preset),
+                                  if (widget.deviceAvailable)
+                                    _brightness(preset, level),
+                                  _extraActions(preset),
+                                  const SizedBox(height: 6),
+                                ],
+                              )
+                            : const SizedBox(width: double.infinity),
+                      ),
                     ),
-                  ],
-                ),
+                  ),
+                  Row(
+                    children: [
+                      _Action(
+                        icon: LucideIcons.book_open,
+                        label: '目录',
+                        onTap: widget.onDirectory,
+                      ),
+                      _Action(
+                        icon: preset.isDark
+                            ? LucideIcons.sun
+                            : LucideIcons.moon,
+                        label: preset.isDark ? '日间' : '夜间',
+                        onTap: widget.onNight,
+                      ),
+                      if (widget.showListening)
+                        _Action(
+                          icon: LucideIcons.headphones,
+                          label: '听书',
+                          onTap: widget.onListen,
+                        ),
+                      _Action(
+                        icon: LucideIcons.type,
+                        label: '排版',
+                        onTap: widget.onAppearance,
+                      ),
+                      _Action(
+                        key: const ValueKey('reader-settings'),
+                        icon: LucideIcons.sliders_horizontal,
+                        label: '设置',
+                        selected: _settingsOpen,
+                        onTap: () =>
+                            setState(() => _settingsOpen = !_settingsOpen),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ),
@@ -161,7 +185,9 @@ class _ReaderControlsState extends State<ReaderControls> {
             children: [
               Expanded(
                 child: Text(
-                  widget.chapterTitle,
+                  widget.seekValue.round() == widget.chapterIndex
+                      ? widget.chapterTitle
+                      : '第 ${widget.seekValue.round() + 1} 章',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(color: preset.textColor, fontSize: 13),
@@ -169,7 +195,7 @@ class _ReaderControlsState extends State<ReaderControls> {
               ),
               const SizedBox(width: 8),
               Text(
-                '${widget.chapterIndex + 1} / ${widget.chapterCount}',
+                '${widget.seekValue.round() + 1} / ${widget.chapterCount}',
                 style: TextStyle(color: preset.mutedTextColor, fontSize: 12),
               ),
             ],
@@ -257,48 +283,37 @@ class _ReaderControlsState extends State<ReaderControls> {
   Widget _extraActions(ReaderThemePreset preset) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
-      child: Column(
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        spacing: 12,
+        runSpacing: 4,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: TextButton.icon(
-                  key: const ValueKey('reader-auto-turn'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: widget.autoTurnActive
-                        ? preset.accentColor
-                        : preset.textColor,
-                  ),
-                  onPressed: widget.onAutoTurn,
-                  icon: Icon(
-                    widget.autoTurnActive
-                        ? LucideIcons.circle_pause
-                        : LucideIcons.circle_play,
-                    size: 18,
-                  ),
-                  label: Text(
-                    widget.autoTurnActive ? '停止自动翻页' : '自动翻页',
-                    style: const TextStyle(fontSize: 13),
-                  ),
-                ),
-              ),
-            ],
+          TextButton.icon(
+            key: const ValueKey('reader-auto-turn'),
+            style: TextButton.styleFrom(
+              foregroundColor: widget.autoTurnActive
+                  ? preset.accentColor
+                  : preset.textColor,
+            ),
+            onPressed: widget.onAutoTurn,
+            icon: Icon(
+              widget.autoTurnActive
+                  ? LucideIcons.circle_pause
+                  : LucideIcons.circle_play,
+              size: 18,
+            ),
+            label: Text(
+              widget.autoTurnActive ? '停止自动翻页' : '自动翻页',
+              style: const TextStyle(fontSize: 13),
+            ),
           ),
-          Row(
-            children: [
-              if (widget.showCache)
-                _Action(
-                  icon: LucideIcons.download,
-                  label: '缓存',
-                  onTap: widget.onCache,
-                ),
-              _Action(
-                icon: LucideIcons.type,
-                label: '排版',
-                onTap: widget.onAppearance,
-              ),
-            ],
-          ),
+          if (widget.showCache)
+            TextButton.icon(
+              style: TextButton.styleFrom(foregroundColor: preset.textColor),
+              onPressed: widget.onCache,
+              icon: const Icon(LucideIcons.download, size: 18),
+              label: const Text('缓存', style: TextStyle(fontSize: 13)),
+            ),
         ],
       ),
     );
@@ -328,10 +343,9 @@ class _Action extends StatelessWidget {
       child: TextButton(
         style: TextButton.styleFrom(
           foregroundColor: color,
+          backgroundColor: selected ? color.withValues(alpha: .08) : null,
           padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
         onPressed: onTap,
         child: Column(

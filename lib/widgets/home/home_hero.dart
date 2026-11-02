@@ -25,7 +25,7 @@ import 'home_design.dart';
 /// `rotate_interval_ms`）；没有词时回退静态提示语 `@string/duw`。
 class HomeHero extends StatefulWidget {
   static const double searchBarHeight = 40;
-  static const double searchBarRadius = 20;
+  static const double searchBarRadius = 8;
 
   /// 官方 `@string/duw`：`SearchWordDisplayView` 的默认文案。
   static const String searchHint = '请输入书名或作者名';
@@ -37,6 +37,9 @@ class HomeHero extends StatefulWidget {
 
   /// 右上角「分类」入口。null 时不占位（与官方 `i_y` gone 一致）。
   final VoidCallback? onCategory;
+  final VoidCallback? onRefresh;
+  final bool refreshing;
+  final bool showSearch;
 
   /// 搜索框热搜词（`/api/v1/search/cue`）。null 表示不接入——测试与离线
   /// 场景框内保持静态提示语；拉取失败同样回退静态提示语。
@@ -46,6 +49,9 @@ class HomeHero extends StatefulWidget {
     super.key,
     required this.onSearch,
     this.onCategory,
+    this.onRefresh,
+    this.refreshing = false,
+    this.showSearch = true,
     this.cueLoader,
   });
 
@@ -99,38 +105,67 @@ class _HomeHeroState extends State<HomeHero> {
   @override
   Widget build(BuildContext context) {
     final palette = HomePalette.of(context);
-    final animate = !MediaQuery.disableAnimationsOf(context);
+    final animate = !HomeMotion.reduced(context);
     return Padding(
       // 官方 fua：paddingTop 6dp / paddingBottom 9dp，左右 16dp。
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
       child: Row(
         children: [
-          Expanded(
-            child: HomePressable(
-              key: const Key('home_search_button'),
-              onTap: widget.onSearch,
-              borderRadius: BorderRadius.circular(HomeHero.searchBarRadius),
-              semanticLabel: HomeHero.searchHint,
-              child: Container(
-                height: HomeHero.searchBarHeight,
-                padding: const EdgeInsets.only(left: 16, right: 14),
-                decoration: BoxDecoration(
-                  color: palette.searchBar,
-                  borderRadius: BorderRadius.circular(HomeHero.searchBarRadius),
+          if (!widget.showSearch)
+            Expanded(
+              child: Text(
+                '书城',
+                style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: palette.ink,
                 ),
-                child: Row(
-                  children: [
-                    Icon(LucideIcons.search, size: 15, color: palette.muted),
-                    const SizedBox(width: 10),
-                    Expanded(child: _cueText(palette, animate)),
-                  ],
+              ),
+            )
+          else
+            Expanded(
+              child: HomePressable(
+                key: const Key('home_search_button'),
+                onTap: widget.onSearch,
+                borderRadius: BorderRadius.circular(HomeHero.searchBarRadius),
+                semanticLabel: HomeHero.searchHint,
+                child: Container(
+                  height: HomeHero.searchBarHeight,
+                  padding: const EdgeInsets.only(left: 16, right: 14),
+                  decoration: BoxDecoration(
+                    color: palette.searchBar,
+                    borderRadius: BorderRadius.circular(
+                      HomeHero.searchBarRadius,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(LucideIcons.search, size: 15, color: palette.muted),
+                      const SizedBox(width: 10),
+                      Expanded(child: _cueText(palette, animate)),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
           if (widget.onCategory != null) ...[
             const SizedBox(width: 16),
             _categoryPill(palette),
+          ],
+          if (widget.onRefresh != null) ...[
+            const SizedBox(width: 8),
+            IconButton(
+              key: const Key('home_refresh_button'),
+              tooltip: '刷新推荐',
+              onPressed: widget.refreshing ? null : widget.onRefresh,
+              icon: widget.refreshing
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(LucideIcons.refresh_cw, size: 18),
+            ),
           ],
         ],
       ),
@@ -149,7 +184,7 @@ class _HomeHeroState extends State<HomeHero> {
     );
     if (!animate) return word;
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 300),
+      duration: HomeMotion.duration(context, 180),
       switchInCurve: Curves.easeOut,
       switchOutCurve: Curves.easeIn,
       layoutBuilder: (currentChild, previousChildren) => Stack(
@@ -162,10 +197,10 @@ class _HomeHeroState extends State<HomeHero> {
 
   /// 搜索行右端的「分类」入口：与搜索框同高同圆角的 40dp 胶囊。
   Widget _categoryPill(HomePalette palette) {
-    return GestureDetector(
+    return HomePressable(
       key: const Key('home_category_button'),
-      behavior: HitTestBehavior.opaque,
-      onTap: widget.onCategory,
+      onTap: widget.onCategory!,
+      borderRadius: BorderRadius.circular(8),
       child: Container(
         height: HomeHero.searchBarHeight,
         padding: const EdgeInsets.symmetric(horizontal: 10),

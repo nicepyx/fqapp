@@ -3,13 +3,18 @@ import 'package:flutter/material.dart';
 import 'home_design.dart';
 import 'home_shelf.dart';
 
-/// First-load skeleton, shaped like the shelf it is standing in for.
-///
-/// 首页改成「继续阅读一行字 / 榜单 / 书籍网格」之后，旧版照 `cmc.xml` 画的
-/// 「白色区块 + 四行榜单」已经对不上真实版式：骨架屏价值在于让真卡片落位
-/// 时不跳，形状错了反而更跳。这里只留一行字条、一个分区头、两行三列的书封。
+/// Loading placeholders share the feed's cover and text geometry.
 class HomeSkeleton extends StatefulWidget {
-  const HomeSkeleton({super.key});
+  final int? columns;
+  final int titleMaxLines;
+  final bool showHeader;
+
+  const HomeSkeleton({
+    super.key,
+    this.columns,
+    this.titleMaxLines = 2,
+    this.showHeader = true,
+  });
 
   @override
   State<HomeSkeleton> createState() => _HomeSkeletonState();
@@ -25,7 +30,17 @@ class _HomeSkeletonState extends State<HomeSkeleton>
     _pulse = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
-    )..repeat(reverse: true);
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (HomeMotion.reduced(context)) {
+      _pulse.stop();
+    } else if (!_pulse.isAnimating) {
+      _pulse.repeat(reverse: true);
+    }
   }
 
   @override
@@ -36,24 +51,28 @@ class _HomeSkeletonState extends State<HomeSkeleton>
 
   @override
   Widget build(BuildContext context) {
-    // Respect the OS "remove animations" setting: no pulse, just the shapes.
-    final animate = !MediaQuery.disableAnimationsOf(context);
-    final body = const Padding(
-      padding: EdgeInsets.only(top: 8),
+    final animate = !HomeMotion.reduced(context);
+    final body = Padding(
+      padding: EdgeInsets.only(top: widget.showHeader ? 8 : 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _ContinueSkeleton(),
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              homeGutter,
-              homeSectionGap,
-              homeGutter,
-              homeHeaderGap,
+          if (widget.showHeader) ...[
+            const _ContinueSkeleton(),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(
+                homeGutter,
+                homeSectionGap,
+                homeGutter,
+                homeHeaderGap,
+              ),
+              child: _Bar(width: 96, height: 18, radius: 4),
             ),
-            child: _Bar(width: 96, height: 18, radius: 4),
+          ],
+          _GridSkeleton(
+            columns: widget.columns,
+            titleMaxLines: widget.titleMaxLines,
           ),
-          _GridSkeleton(),
         ],
       ),
     );
@@ -63,7 +82,7 @@ class _HomeSkeletonState extends State<HomeSkeleton>
       opacity: Tween<double>(
         begin: 0.6,
         end: 1,
-      ).animate(CurvedAnimation(parent: _pulse, curve: Curves.easeInOut)),
+      ).chain(CurveTween(curve: Curves.easeInOut)).animate(_pulse),
       child: body,
     );
   }
@@ -88,57 +107,80 @@ class _ContinueSkeleton extends StatelessWidget {
   }
 }
 
-/// 两行三列的书封，与真网格的 5:7 比例、12dp 列距一致。
 class _GridSkeleton extends StatelessWidget {
-  const _GridSkeleton();
+  final int? columns;
+  final int titleMaxLines;
+
+  const _GridSkeleton({this.columns, required this.titleMaxLines});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: homeGutter),
-      child: Column(
-        children: [
-          for (var row = 0; row < 2; row++) ...[
-            if (row > 0) const SizedBox(height: 20),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (var column = 0; column < 3; column++) ...[
-                  if (column > 0) const SizedBox(width: homeGridGap),
-                  const Expanded(child: _CardSkeleton()),
-                ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final count =
+              columns ?? homeShelfColumns(context, constraints.maxWidth);
+          return Column(
+            children: [
+              for (var row = 0; row < 2; row++) ...[
+                if (row > 0) const SizedBox(height: 20),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (var column = 0; column < count; column++) ...[
+                      if (column > 0) const SizedBox(width: homeGridGap),
+                      Expanded(
+                        child: _CardSkeleton(titleMaxLines: titleMaxLines),
+                      ),
+                    ],
+                  ],
+                ),
               ],
-            ),
-          ],
-        ],
+            ],
+          );
+        },
       ),
     );
   }
 }
 
 class _CardSkeleton extends StatelessWidget {
-  const _CardSkeleton();
+  final int titleMaxLines;
+
+  const _CardSkeleton({required this.titleMaxLines});
 
   @override
   Widget build(BuildContext context) {
-    return const Column(
+    final scaler = MediaQuery.textScalerOf(context);
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        AspectRatio(aspectRatio: 5 / 7, child: _Bar(radius: 12)),
-        SizedBox(height: 8),
-        _Bar(height: 14, radius: 4),
-        SizedBox(height: 6),
-        FractionallySizedBox(
-          widthFactor: 0.55,
-          alignment: Alignment.centerLeft,
-          child: _Bar(height: 14, radius: 4),
+        const AspectRatio(aspectRatio: 5 / 7, child: _Bar(radius: 8)),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: scaler.scale(15) * 1.35 * titleMaxLines,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _Bar(height: scaler.scale(15), radius: 4),
+              if (titleMaxLines > 1) ...[
+                SizedBox(height: scaler.scale(15) * .35),
+                FractionallySizedBox(
+                  widthFactor: .55,
+                  child: _Bar(height: scaler.scale(15), radius: 4),
+                ),
+              ],
+            ],
+          ),
         ),
-        SizedBox(height: 6),
+        const SizedBox(height: 4),
         FractionallySizedBox(
           widthFactor: 0.4,
           alignment: Alignment.centerLeft,
-          child: _Bar(height: 10, radius: 4),
+          child: _Bar(height: scaler.scale(11) * 1.3, radius: 4),
         ),
+        const SizedBox(height: 2),
       ],
     );
   }

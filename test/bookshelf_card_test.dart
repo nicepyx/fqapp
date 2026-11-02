@@ -16,7 +16,7 @@ void main() {
     expect(bookshelfKindLabel('unknown'), 'unknown');
   });
 
-  testWidgets('宫格封面按 1.4 比例、圆角 10 并带进度角标', (tester) async {
+  testWidgets('宫格封面按 1.4 比例、统一圆角并带进度角标', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -39,7 +39,7 @@ void main() {
     final cover = tester.getSize(find.byKey(const Key('bookshelf-cover')));
     expect(cover.width, 200);
     expect(cover.height, closeTo(200 * ShelfTokens.gridCoverRatio, 0.01));
-    // 圆角走 ShelfTokens.radiusCover（10dp）。
+    // 圆角走 ShelfTokens.radiusCover。
     final clip = tester.widget<ClipRRect>(
       find
           .descendant(

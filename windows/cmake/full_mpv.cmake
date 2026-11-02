@@ -1,0 +1,21 @@
+# The media_kit minimal binary omits the audio filters used by night mode.
+set(FQAPP_MPV_VERSION "20261021-git-e471496c56")
+set(FQAPP_MPV_ROOT "${CMAKE_BINARY_DIR}/fqapp_mpv")
+set(FQAPP_MPV_ARCHIVE "${FQAPP_MPV_ROOT}/mpv-dev.7z")
+set(FQAPP_MPV_URL "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20261021/mpv-dev-x86_64-${FQAPP_MPV_VERSION}.7z")
+set(FQAPP_MPV_SHA256 "efc719eff3dc5954b4a5efc800632808bcec01cc9034940dd14e5eb7fe9ea633")
+file(MAKE_DIRECTORY "${FQAPP_MPV_ROOT}")
+if(NOT EXISTS "${FQAPP_MPV_ARCHIVE}")
+  file(DOWNLOAD "${FQAPP_MPV_URL}" "${FQAPP_MPV_ARCHIVE}"
+    EXPECTED_HASH "SHA256=${FQAPP_MPV_SHA256}" TLS_VERIFY ON)
+endif()
+file(SHA256 "${FQAPP_MPV_ARCHIVE}" FQAPP_MPV_ACTUAL_SHA256)
+if(NOT FQAPP_MPV_ACTUAL_SHA256 STREQUAL FQAPP_MPV_SHA256)
+  message(FATAL_ERROR "Full libmpv archive checksum mismatch")
+endif()
+if(NOT EXISTS "${FQAPP_MPV_ROOT}/libmpv-2.dll")
+  execute_process(COMMAND "${CMAKE_COMMAND}" -E tar xf "${FQAPP_MPV_ARCHIVE}"
+    WORKING_DIRECTORY "${FQAPP_MPV_ROOT}" COMMAND_ERROR_IS_FATAL ANY)
+endif()
+list(FILTER PLUGIN_BUNDLED_LIBRARIES EXCLUDE REGEX "[/\\]libmpv-2\\.dll$")
+list(APPEND PLUGIN_BUNDLED_LIBRARIES "${FQAPP_MPV_ROOT}/libmpv-2.dll")

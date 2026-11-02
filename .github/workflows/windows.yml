@@ -61,6 +61,7 @@ jobs:
           flutter test --no-pub
           test/desktop_detail_layout_test.dart test/desktop_platform_test.dart
           test/desktop_video_layout_test.dart test/player_page_test.dart
+          test/desktop_video_tools_test.dart test/desktop_mini_video_test.dart
           test/book_open_entry_test.dart
       - name: Restore matching release binaries
         id: bundle-cache
@@ -68,8 +69,9 @@ jobs:
         with:
           path: |
             build/windows/x64/runner/Release
+            build/windows/x64/fqapp_mpv/include
             rust/target/release/fqapi_core.dll
-          key: windows-3.44.6-rust1.99.1-${{ runner.arch }}-v1-${{ hashFiles('lib/**', 'pubspec.*', 'rust/Cargo.*', 'rust/src/**', 'rust/assets/**', 'rust/build.rs', 'native/**', 'assets/**', 'windows/runner/**', 'windows/CMakeLists.txt', 'windows/flutter/CMakeLists.txt', 'third_party/**') }}
+          key: windows-3.44.6-rust1.99.1-${{ runner.arch }}-v1-${{ hashFiles('lib/**', 'pubspec.*', 'rust/Cargo.*', 'rust/src/**', 'rust/assets/**', 'rust/build.rs', 'native/**', 'assets/**', 'windows/runner/**', 'windows/cmake/**', 'windows/CMakeLists.txt', 'windows/flutter/CMakeLists.txt', 'third_party/**') }}
       - name: Build Windows release
         if: steps.bundle-cache.outputs.cache-hit != 'true'
         run: flutter build windows --release --target lib/main.dart
@@ -79,6 +81,7 @@ jobs:
         with:
           path: |
             build/windows/x64/runner/Release
+            build/windows/x64/fqapp_mpv/include
             rust/target/release/fqapi_core.dll
           key: ${{ steps.bundle-cache.outputs.cache-primary-key }}
       - name: Verify native decryption and access control
@@ -105,7 +108,7 @@ jobs:
           python scripts/collect_windows_licenses.py
           if ($LASTEXITCODE -ne 0) { throw 'License collection failed' }
           $src = 'build/windows/x64/runner/Release'
-          foreach ($file in @('fqapp.exe','fqapi_core.dll','libmpv-2.dll','data/app.so')) {
+          foreach ($file in @('fqapp.exe','fqapi_core.dll','libmpv-2.dll','ffmpeg.exe','data/app.so')) {
             if (-not (Test-Path "$src/$file")) { throw "Missing $file" }
           }
           Copy-Item LICENSE "$src/LICENSE.txt"

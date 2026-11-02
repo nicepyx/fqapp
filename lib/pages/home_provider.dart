@@ -494,6 +494,10 @@ class HomeNotifier extends Notifier<HomeState> {
     final tabIndex = state.tabIndex;
     final generation = ++_generation;
     final feed = _feedFor(tabIndex)..reset();
+    if (manualRefresh) {
+      feed.items = state.items;
+      feed.cells = state.cells;
+    }
     // Stale-while-revalidate: show the last rendered cards while the network
     // refresh runs. The cursors stay reset, so the response replaces page one.
     final snapshot = manualRefresh ? null : _feedCache?.load(tabIndex);
@@ -699,6 +703,10 @@ class HomeNotifier extends Notifier<HomeState> {
   /// 摆设。
   Future<void> retryLoadMore() async {
     if (state.isLoading || state.isLoadMore) return;
+    if (!_feedFor(state.tabIndex).loaded) {
+      await load(manualRefresh: true);
+      return;
+    }
     _feedFor(state.tabIndex).hasMore = true;
     state = state.copyWith(hasMore: true, clearError: true);
     await loadMore();

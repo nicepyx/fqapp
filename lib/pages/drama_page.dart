@@ -1,7 +1,9 @@
 import '../widgets/video_player_chrome.dart';
 import '../services/desktop_platform.dart';
+import '../services/desktop_mini_reader.dart';
 import 'dart:async';
-
+import '../services/desktop_shortcuts.dart';
+import '../widgets/desktop_shortcut_scope.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_lucide/flutter_lucide.dart';
@@ -32,6 +34,8 @@ import '../services/user_facing_error.dart';
 import '../services/media_history_store.dart';
 import '../widgets/home/home_design.dart';
 import '../widgets/home/home_media_card.dart';
+import '../widgets/home/home_shelf.dart';
+import '../widgets/home/home_skeleton.dart';
 import '../widgets/player/playlet_comment_panel.dart';
 import '../widgets/player/playlet_danmaku_layer.dart';
 import '../widgets/player/playlet_danmaku_loader.dart';
@@ -473,6 +477,9 @@ class _DramaPageState extends ConsumerState<DramaPage>
     });
     if (isWindowsDesktop) {
       DesktopPlatform.fullscreen.addListener(_desktopFullscreenChanged);
+      DesktopMiniReaderController.instance.addListener(
+        _desktopFullscreenChanged,
+      );
     }
     WidgetsBinding.instance.addObserver(this);
     _inline = InlineVideoPlayback(
@@ -529,6 +536,9 @@ class _DramaPageState extends ConsumerState<DramaPage>
   void dispose() {
     if (isWindowsDesktop) {
       DesktopPlatform.fullscreen.removeListener(_desktopFullscreenChanged);
+      DesktopMiniReaderController.instance.removeListener(
+        _desktopFullscreenChanged,
+      );
     }
     WidgetsBinding.instance.removeObserver(this);
     _inline.activeVid.removeListener(_onFeedVidChanged);
@@ -1364,6 +1374,14 @@ class _DramaPageState extends ConsumerState<DramaPage>
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(dramaProvider);
+    ref.listen(dramaProvider, (previous, next) {
+      if (previous?.isLoading == true &&
+          !next.isLoading &&
+          next.error != null &&
+          next.items.isNotEmpty) {
+        PlayerToast.show(context, '刷新失败，已保留当前内容');
+      }
+    });
     final channel = _current;
     final items = _visibleItems(state);
     // 浅色页（看剧/漫剧/最近/收藏）跟随外观色板：深色 / OLED 下不能再用
@@ -1417,43 +1435,47 @@ class _DramaPageState extends ConsumerState<DramaPage>
                 // 只让内容跟手横移：频道条固定在顶部，切换后立刻显示新的
                 // 选中项，不被动画拖着走。
                 child: switch (channel) {
-                DramaChannel(source: DramaChannelSource.feed, kind: 'manju') =>
-                  _browseGrid(
+                  DramaChannel(
+                    source: DramaChannelSource.feed,
+                    kind: 'manju',
+                  ) =>
+                    _browseGrid(
+                      state,
+                      items,
+                      columns: 3,
+                      gridKey: 'drama_manju_grid',
+                      titleMaxLines: 1,
+                    ),
+                  DramaChannel(
+                    source: DramaChannelSource.feed,
+                    serverType: kChannelVideoEpisode,
+                  ) =>
+                    _browseGrid(
+                      state,
+                      items,
+                      columns: 2,
+                      gridKey: 'drama_episode_grid',
+                      titleMaxLines: 2,
+                    ),
+                  DramaChannel(source: DramaChannelSource.feed) => _feed(
                     state,
                     items,
-                    columns: 3,
-                    gridKey: 'drama_manju_grid',
-                    titleMaxLines: 1,
                   ),
-                DramaChannel(
-                  source: DramaChannelSource.feed,
-                  serverType: kChannelVideoEpisode,
-                ) =>
-                  _browseGrid(
-                    state,
-                    items,
-                    columns: 2,
-                    gridKey: 'drama_episode_grid',
-                    titleMaxLines: 2,
+                  _ => _LocalList(
+                    channel: channel,
+                    // 官方最近/收藏卡点击都直接进播放页续播，不经过详情页。
+                    onOpen: _openDetail,
+                    onPlay: _openPlayer,
+                    onFind: () => _selectChannel(0),
+                    onEditingChanged: (editing) {
+                      if (mounted) setState(() => _recentEditing = editing);
+                    },
                   ),
-                DramaChannel(source: DramaChannelSource.feed) => _feed(
-                  state,
-                  items,
-                ),
-                _ => _LocalList(
-                  channel: channel,
-                  // 官方最近/收藏卡点击都直接进播放页续播，不经过详情页。
-                  onOpen: _openDetail,
-                  onPlay: _openPlayer,
-                  onFind: () => _selectChannel(0),
-                  onEditingChanged: (editing) {
-                    if (mounted) setState(() => _recentEditing = editing);
-                  },
-                ),
                 },
               ),
             ),
-            if (_pullDistance > 0)              Positioned(
+            if (_pullDistance > 0)
+              Positioned(
                 top: MediaQuery.paddingOf(context).top + _topChromeHeight + 8,
                 left: 0,
                 right: 0,
@@ -1474,36 +1496,19 @@ class _DramaPageState extends ConsumerState<DramaPage>
                 child: IgnorePointer(
                   child: SizedBox(
                     height:
-                        MediaQuery.paddingOf(context).top +
-                        _topChromeHeight +
-                        56,
+                        MediaQuery.paddingOf(context).top + _topChromeHeight,
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          // 浅色支沿用官方奶白渐变；深色 / OLED 取当前画布色
-                          // 淡出，只负责把海报挡在顶栏后。
-                          colors: [
-                            palette.dark
-                                ? palette.canvas
-                                : const Color(0xFFFFF3E6),
-                            palette.dark
-                                ? palette.canvas
-                                : const Color(0xFFFFFFFF),
-                            palette.dark
-                                ? palette.canvas.withValues(alpha: 0)
-                                : const Color(0x00FFFFFF),
-                          ],
-                          stops: const [0.0, 0.5, 1.0],
+                        color: palette.canvas,
+                        border: Border(
+                          bottom: BorderSide(color: palette.line, width: .5),
                         ),
                       ),
                     ),
                   ),
                 ),
               ),
-            if (!_recentEditing &&
-                !(isWindowsDesktop && DesktopPlatform.fullscreen.value))
+            if (!_recentEditing && !(isWindowsDesktop && _desktopImmersive))
               Positioned(
                 // 推荐（视频流）与看剧/漫剧（浅色页）切换时，下面的浅色
                 // 渐变背板会整体插入或移除，Stack 的子项下标随之错位。
@@ -1517,6 +1522,8 @@ class _DramaPageState extends ConsumerState<DramaPage>
                   selected: _channel,
                   onSelect: _selectChannel,
                   onSearch: _openSearch,
+                  onRefresh: _refresh,
+                  refreshing: state.isLoading,
                   // 占位文案跟着频道语境走：漫剧频道搜漫剧，其余搜短剧。
                   hint: _current.kind == 'manju' ? '请输入漫剧名或主演名' : '请输入短剧名或主演名',
                   // 官方浅色页（看剧/漫剧）的顶栏换浅肤：深色字 + 浅灰搜索框。
@@ -1553,7 +1560,7 @@ class _DramaPageState extends ConsumerState<DramaPage>
     required String gridKey,
     required int titleMaxLines,
   }) {
-    if (state.error != null) {
+    if (state.error != null && items.isEmpty) {
       return _FeedMessage(
         key: const Key('drama_error'),
         message: '网络异常，请稍后再试',
@@ -1561,48 +1568,72 @@ class _DramaPageState extends ConsumerState<DramaPage>
         onAction: _refresh,
       );
     }
-    if (items.isEmpty) {
-      if (state.isLoading || state.hasMore) {
-        return const _GridMessage(message: '正在刷新内容', showSpinner: true);
-      }
+    if (items.isEmpty && !state.isLoading && !state.hasMore) {
       return _GridMessage(key: Key('$gridKey.empty'), message: '暂无内容');
     }
-    if (isWindowsDesktop) {
-      columns = (MediaQuery.sizeOf(context).width / 190).floor().clamp(3, 9);
-    }
     final bottomInset = _effectiveBottomInset(context);
-    return NotificationListener<ScrollNotification>(
-      onNotification: _onGridScroll,
-      child: GridView.builder(
-        key: Key(gridKey),
-        padding: EdgeInsets.fromLTRB(
-          12,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final largeType = MediaQuery.textScalerOf(context).scale(15) > 22;
+        final count = isWindowsDesktop
+            ? ((constraints.maxWidth - homeGutter * 2) /
+                      (largeType ? 220 : 180))
+                  .floor()
+                  .clamp(2, 9)
+            : largeType
+            ? 2
+            : columns;
+        final cardWidth =
+            (constraints.maxWidth -
+                homeGutter * 2 -
+                (count - 1) * homeGridGap) /
+            count;
+        final padding = EdgeInsets.fromLTRB(
+          homeGutter,
           MediaQuery.paddingOf(context).top + _topChromeHeight + 12,
-          12,
+          homeGutter,
           bottomInset + 20,
-        ),
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: columns,
-          crossAxisSpacing: 8,
-          mainAxisSpacing: 16,
-          // 海报约 5:7 + 片名 + 「分类·集数」；两列格片名可占两行。
-          childAspectRatio: isWindowsDesktop
-              ? .58
-              : columns == 2
-              ? 0.56
-              : 0.52,
-        ),
-        itemCount: items.length,
-        itemBuilder: (context, index) => _BrowseCard(
-          key: ValueKey('$gridKey.${items[index].id}'),
-          item: items[index],
-          titleMaxLines: titleMaxLines,
-          // 官方网格卡点击 = 直接进播放页（cv2/c.java:371-376 →
-          // openShortSeriesActivity → ShortSeriesActivity 沉浸播放器），
-          // 不经过详情页；详情是播放页里的入口。
-          onTap: () => unawaited(_openPlayer(items[index])),
-        ),
-      ),
+        );
+        if (items.isEmpty) {
+          return SingleChildScrollView(
+            key: const Key('drama_grid_loading'),
+            padding: EdgeInsets.only(top: padding.top, bottom: padding.bottom),
+            child: HomeSkeleton(
+              columns: count,
+              titleMaxLines: titleMaxLines,
+              showHeader: false,
+            ),
+          );
+        }
+        return NotificationListener<ScrollNotification>(
+          onNotification: _onGridScroll,
+          child: GridView.builder(
+            key: Key(gridKey),
+            padding: padding,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: count,
+              crossAxisSpacing: homeGridGap,
+              mainAxisSpacing: 20,
+              mainAxisExtent: homeCardExtent(
+                context,
+                cardWidth,
+                MediaQuery.textScalerOf(context),
+                titleMaxLines: titleMaxLines,
+              ),
+            ),
+            itemCount: items.length,
+            itemBuilder: (context, index) => _BrowseCard(
+              key: ValueKey('$gridKey.${items[index].id}'),
+              item: items[index],
+              titleMaxLines: titleMaxLines,
+              // 官方网格卡点击 = 直接进播放页（cv2/c.java:371-376 →
+              // openShortSeriesActivity → ShortSeriesActivity 沉浸播放器），
+              // 不经过详情页；详情是播放页里的入口。
+              onTap: () => unawaited(_openPlayer(items[index])),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -1647,10 +1678,10 @@ class _DramaPageState extends ConsumerState<DramaPage>
   }
 
   Widget _feed(HomeState state, List<MediaItem> items) {
-    if (isWindowsDesktop && state.error == null && items.isNotEmpty) {
+    if (isWindowsDesktop && items.isNotEmpty) {
       return _desktopFeed(items);
     }
-    if (state.error != null) {
+    if (state.error != null && items.isEmpty) {
       return _FeedMessage(
         key: const Key('drama_error'),
         message: '网络异常，请稍后再试',
@@ -1764,6 +1795,10 @@ class _DramaPageState extends ConsumerState<DramaPage>
     if (mounted) setState(() {});
   }
 
+  bool get _desktopImmersive =>
+      DesktopPlatform.fullscreen.value ||
+      DesktopMiniReaderController.instance.videoActive;
+
   void _desktopNextDrama(List<MediaItem> items, int delta) {
     final index = (_screenIndex + delta).clamp(0, items.length - 1);
     if (index == _screenIndex) return;
@@ -1801,22 +1836,15 @@ class _DramaPageState extends ConsumerState<DramaPage>
         _inline.error,
         _inline.activeVid,
       ]),
-      builder: (context, _) => Focus(
-        onKeyEvent: (_, event) {
-          if (event is! KeyDownEvent) return KeyEventResult.ignored;
-          if (event.logicalKey == LogicalKeyboardKey.pageDown) {
-            _desktopNextDrama(items, 1);
-            return KeyEventResult.handled;
-          }
-          if (event.logicalKey == LogicalKeyboardKey.pageUp) {
-            _desktopNextDrama(items, -1);
-            return KeyEventResult.handled;
-          }
-          return KeyEventResult.ignored;
+      builder: (context, _) => DesktopShortcutScope(
+        group: DesktopShortcutGroup.drama,
+        actions: {
+          DesktopCommand.dramaNext: () => _desktopNextDrama(items, 1),
+          DesktopCommand.dramaPrevious: () => _desktopNextDrama(items, -1),
         },
         child: Padding(
           padding: EdgeInsets.only(
-            top: DesktopPlatform.fullscreen.value ? 0 : _topChromeHeight,
+            top: _desktopImmersive ? 0 : _topChromeHeight,
           ),
           child: Column(
             children: [
@@ -1874,7 +1902,7 @@ class _DramaPageState extends ConsumerState<DramaPage>
                   ),
                 ),
               ),
-              if (!DesktopPlatform.fullscreen.value)
+              if (!_desktopImmersive)
                 SizedBox(
                   height: 44,
                   child: Row(
@@ -2114,6 +2142,8 @@ class _TopBar extends StatefulWidget {
   final int selected;
   final ValueChanged<int> onSelect;
   final VoidCallback onSearch;
+  final VoidCallback onRefresh;
+  final bool refreshing;
 
   /// 搜索框占位文案，跟着频道语境走：漫剧频道搜漫剧，其余频道搜短剧。
   final String hint;
@@ -2127,6 +2157,8 @@ class _TopBar extends StatefulWidget {
     required this.selected,
     required this.onSelect,
     required this.onSearch,
+    required this.onRefresh,
+    required this.refreshing,
     required this.hint,
     this.light = false,
   });
@@ -2157,7 +2189,7 @@ class _TopBarState extends State<_TopBar> {
     // 服务端频道表替换本地表时条数会变，锚点跟着重建。
     if (oldWidget.channels.length != widget.channels.length) _syncTabKeys();
     if (oldWidget.selected != widget.selected) {
-      _revealSelected(animate: !MediaQuery.disableAnimationsOf(context));
+      _revealSelected(animate: !HomeMotion.reduced(context));
     }
   }
 
@@ -2255,6 +2287,22 @@ class _TopBarState extends State<_TopBar> {
                 // 桌面端不渲染搜索行，搜索只留这一处入口。
                 if (isWindowsDesktop) ...[
                   IconButton(
+                    key: const Key('drama_refresh_button'),
+                    tooltip: '刷新频道',
+                    onPressed: widget.refreshing ? null : widget.onRefresh,
+                    color: widget.light ? palette.ink : Colors.white,
+                    icon: widget.refreshing
+                        ? SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: widget.light ? palette.ink : Colors.white,
+                            ),
+                          )
+                        : const Icon(LucideIcons.refresh_cw, size: 18),
+                  ),
+                  IconButton(
                     key: const Key('drama_strip_search_button'),
                     tooltip: '搜索短剧',
                     onPressed: widget.onSearch,
@@ -2301,7 +2349,7 @@ class _TopBarState extends State<_TopBar> {
             color: light
                 ? (dark ? const Color(0x1AFFFFFF) : const Color(0x0F000000))
                 : const Color(0x33000000),
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(8),
             border: Border.all(
               color: light
                   ? (dark ? const Color(0x1FFFFFFF) : const Color(0x14000000))
@@ -2336,20 +2384,9 @@ class _TopBarState extends State<_TopBar> {
   }
 }
 
-/// One tab of the channel strip: an animated 16→24sp label over a 3dp
-/// indicator.
-///
-/// 字号档位与切换动画移植自首页 tab 条（选中 24sp、未选中 16sp，
-/// `AnimatedDefaultTextStyle` 180ms easeOutCubic），比官方短剧条的固定
-/// 18sp 更有选中感（用户 2026-10-25 要求）。
-///
-/// The strip floats over the video feed (`ap4.xml` 根背景 @null)，文字用白色系：
-/// 选中纯白加粗、未选中半透明白（官方 `app:aui/avn` 指向的
-/// `skin_color_black_light` 是皮肤资源，截图里短剧 feed 上呈现为深色背景上
-/// 的白字，与皮肤暗色变体一致）。
+/// Stable label size keeps the strip still when its selection changes.
 class _ChannelTab extends StatelessWidget {
-  static const _selectedSize = 24.0;
-  static const _unselectedSize = 16.0;
+  static const _labelSize = 17.0;
 
   final String label;
   final bool selected;
@@ -2376,9 +2413,7 @@ class _ChannelTab extends StatelessWidget {
     final unselectedColor = light && !dark
         ? const Color(0x99000000)
         : const Color(0x99FFFFFF);
-    final duration = MediaQuery.disableAnimationsOf(context)
-        ? Duration.zero
-        : const Duration(milliseconds: 180);
+    final duration = HomeMotion.duration(context, 160);
     return Semantics(
       selected: selected,
       button: true,
@@ -2389,7 +2424,7 @@ class _ChannelTab extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           // 点击水波也走圆角：方角高亮压在浅色页上像一块硬阴影。
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(8),
           // 官方 `ap3.xml`：tab 内边距 `app:avb` = 16dp（TabCompress 开）／20dp（关），
           // 文字 18sp（`app:avq`/`app:av5`）。这里取压缩态 16dp；字号按
           // 用户要求换成首页的 24/16 两档。
@@ -2401,10 +2436,10 @@ class _ChannelTab extends StatelessWidget {
                 AnimatedDefaultTextStyle(
                   duration: duration,
                   curve: Curves.easeOutCubic,
-                  style: TextStyle(
-                    fontSize: selected ? _selectedSize : _unselectedSize,
+                  style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                    fontSize: _labelSize,
                     height: 1.1,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                    fontWeight: FontWeight.w600,
                     color: selected ? selectedColor : unselectedColor,
                   ),
                   child: Text(label),
@@ -3951,13 +3986,8 @@ class _InlineVideoError extends StatelessWidget {
 /// 漫剧瀑布格的浅色提示（加载/空态）。
 class _GridMessage extends StatelessWidget {
   final String message;
-  final bool showSpinner;
 
-  const _GridMessage({
-    super.key,
-    required this.message,
-    this.showSpinner = false,
-  });
+  const _GridMessage({super.key, required this.message});
 
   @override
   Widget build(BuildContext context) {
@@ -3969,17 +3999,6 @@ class _GridMessage extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (showSpinner) ...[
-                SizedBox(
-                  width: 26,
-                  height: 26,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: palette.ink,
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
               Text(
                 message,
                 textAlign: TextAlign.center,
@@ -4219,26 +4238,19 @@ class _BrowseCard extends StatelessWidget {
     final subtitle = _subtitle;
     final pixelRatio = MediaQuery.devicePixelRatioOf(context);
     final palette = HomePalette.of(context);
-    return GestureDetector(
+    final scaler = MediaQuery.textScalerOf(context);
+    return HomePressable(
       onTap: onTap,
-      behavior: HitTestBehavior.opaque,
+      semanticLabel: item.title,
+      borderRadius: BorderRadius.circular(8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x0A000000),
-                    blurRadius: 8,
-                    offset: Offset(0, 2),
-                  ),
-                ],
-              ),
+          AspectRatio(
+            aspectRatio: 5 / 7,
+            child: RepaintBoundary(
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(8),
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
@@ -4251,7 +4263,7 @@ class _BrowseCard extends StatelessWidget {
                     ),
                     DecoratedBox(
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(8),
                         border: Border.all(
                           color: palette.dark
                               ? palette.line
@@ -4265,28 +4277,31 @@ class _BrowseCard extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 7),
-          Text(
-            item.title,
-            maxLines: titleMaxLines,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              height: 1.25,
-              color: palette.ink,
+          const SizedBox(height: 8),
+          SizedBox(
+            height: scaler.scale(15) * 1.35 * titleMaxLines,
+            child: Text(
+              item.title,
+              maxLines: titleMaxLines,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                height: 1.35,
+                color: palette.ink,
+              ),
             ),
           ),
           if (subtitle != null)
             Padding(
-              padding: const EdgeInsets.only(top: 3),
+              padding: const EdgeInsets.only(top: 4),
               child: Text(
                 subtitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 11,
-                  height: 1.2,
+                  height: 1.3,
                   color: palette.muted,
                 ),
               ),

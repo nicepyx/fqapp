@@ -174,7 +174,9 @@ void main() {
       await tester.ensureVisible(
         find.byKey(const ValueKey('reader-vertical-padding-28.0')),
       );
-      await tester.tap(find.byKey(const ValueKey('reader-vertical-padding-28.0')));
+      await tester.tap(
+        find.byKey(const ValueKey('reader-vertical-padding-28.0')),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('关闭排版设置'));
       await tester.pumpAndSettle();
@@ -238,28 +240,47 @@ void main() {
     (name: 'portrait', size: const Size(390, 844), scale: 1.0),
     (name: 'narrow large text', size: const Size(280, 600), scale: 2.0),
     (name: 'landscape', size: const Size(780, 360), scale: 1.4),
+    (name: 'desktop', size: const Size(1280, 800), scale: 1.0),
   ]) {
     testWidgets('reader panels fit ${layout.name}', (tester) async {
       final previousShadows = debugDisableShadows;
       try {
         await _size(tester, layout.size);
-        if (layout.name == 'portrait') await _loadPreviewFont(tester);
+        await _loadPreviewFont(tester);
         await tester.pumpWidget(_app(_reader(), scale: layout.scale));
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
         if (layout.name == 'portrait') await _capture(tester, 'reading');
         await _openMenu(tester);
         expect(tester.takeException(), isNull);
-        if (layout.name == 'portrait') await _capture(tester, 'menu');
+        final settingsRect = tester.getRect(
+          find.byKey(const ValueKey('reader-settings')),
+        );
+        expect(find.text('排版').hitTestable(), findsOneWidget);
+        await tester.tap(find.text('排版'));
+        await tester.pumpAndSettle();
+        expect(find.text('排版设置'), findsOneWidget);
+        await tester.tap(find.byTooltip('关闭排版设置'));
+        await tester.pumpAndSettle();
+        await _openMenu(tester);
         await _openSettings(tester);
+        expect(
+          tester.getRect(find.byKey(const ValueKey('reader-settings'))),
+          settingsRect,
+        );
+        expect(find.text('目录').hitTestable(), findsOneWidget);
+        expect(find.text('排版').hitTestable(), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await _capture(tester, '${layout.name}-menu');
         await tester.ensureVisible(find.text('排版'));
         await tester.tap(find.text('排版'));
         await tester.pumpAndSettle();
         expect(find.text('排版设置'), findsOneWidget);
         expect(tester.takeException(), isNull);
-        if (layout.name == 'portrait') await _capture(tester, 'appearance');
+        await _capture(tester, '${layout.name}-appearance');
         await tester.tap(find.byKey(const ValueKey('reader-theme-dark')));
         await tester.pumpAndSettle();
+        await _capture(tester, '${layout.name}-appearance-dark');
         await tester.tap(find.byTooltip('关闭排版设置'));
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
@@ -405,6 +426,10 @@ Future<void> _loadPreviewFont(WidgetTester tester) async {
     final icons = FontLoader('MaterialIcons')
       ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
     await icons.load();
+    await (FontLoader('packages/flutter_lucide/lucide')..addFont(
+          rootBundle.load('packages/flutter_lucide/lib/fonts/lucide.ttf'),
+        ))
+        .load();
   });
 }
 

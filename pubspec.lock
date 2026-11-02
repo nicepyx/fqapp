@@ -122,7 +122,7 @@ packages:
     source: hosted
     version: "0.3.5+5"
   crypto:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: crypto
       sha256: c8ea0233063ba03258fbcf2ca4d6dadfefe14f02fab57702265467a19f27fadf
@@ -1001,6 +1001,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.1"
+  subtitle:
+    dependency: "direct main"
+    description:
+      name: subtitle
+      sha256: fdefaa2eb8a3acd5a3ab71ca27e03cbb023eb32dd223667146f8dbe3b33ae406
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.0"
   sync_http:
     dependency: transitive
     description:
@@ -1041,6 +1049,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.0"
+  universal_io:
+    dependency: transitive
+    description:
+      name: universal_io
+      sha256: ba9dde5f7c6d8ec7ed856bef0eb01c425881acae7748f77dac4d5cc46f2edf04
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.2.3"
   universal_platform:
     dependency: transitive
     description:

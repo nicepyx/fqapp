@@ -392,6 +392,54 @@ void main() {
     },
   );
 
+  for (final fail in [false, true]) {
+    test(
+      'manual refresh retains cards and retries page one (failure=$fail)',
+      () async {
+        var requests = 0;
+        final gate = Completer<void>();
+        final provider = NotifierProvider<HomeNotifier, HomeState>(
+          () => HomeNotifier(
+            initialTabIndex: 6,
+            homepageLoader:
+                ({int tabType = 2, int offset = 0, String? sessionId}) async {
+                  requests++;
+                  expect(offset, 0);
+                  if (requests == 2) {
+                    await gate.future;
+                    if (fail) throw StateError('offline');
+                  }
+                  return HomepagePage(
+                    items: [_item(requests == 1 ? 'old' : 'fresh')],
+                    nextOffset: null,
+                    sessionId: null,
+                  );
+                },
+            searchLoader: (query, {int page = 1}) async => [],
+          ),
+        );
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+        final notifier = container.read(provider.notifier);
+        await notifier.load();
+        final refresh = notifier.load(manualRefresh: true);
+        expect(container.read(provider).isLoading, isTrue);
+        expect(container.read(provider).items.single.id, 'old');
+        gate.complete();
+        await refresh;
+        if (fail) {
+          expect(container.read(provider).items.single.id, 'old');
+          expect(container.read(provider).error, isNotNull);
+          await notifier.retryLoadMore();
+        }
+        expect(container.read(provider).items.map((item) => item.id), [
+          'fresh',
+        ]);
+        expect(container.read(provider).error, isNull);
+      },
+    );
+  }
+
   test('a manual refresh replaces the list instead of resuming', () async {
     HomeFeedCache.hiveReady = true;
     final cache = HomeFeedCache();

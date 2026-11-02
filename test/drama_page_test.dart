@@ -558,7 +558,7 @@ void main() {
     final channelInk = tester.widget<InkWell>(
       find.ancestor(of: find.text('推荐'), matching: find.byType(InkWell)).first,
     );
-    expect(channelInk.borderRadius, BorderRadius.circular(12));
+    expect(channelInk.borderRadius, BorderRadius.circular(8));
     expect(find.byKey(const Key('drama_search_button')), findsOneWidget);
     // 官方 `ap3.xml` 的 `@id/h4f` 是 20dp 搜索钮，但手机端顶部已有整条
     // 搜索框，两处入口重复（2026-10-25 用户要求移除）。桌面端没有搜索行，
@@ -609,7 +609,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('频道条按首页留白，标签切换沿用首页放大动画', (tester) async {
+  testWidgets('频道条切换时文字尺寸与相邻标签位置保持稳定', (tester) async {
     await tester.binding.setSurfaceSize(const Size(360, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
@@ -632,22 +632,20 @@ void main() {
       return rich.text.style!.fontSize!;
     }
 
-    // 首页的字号档位：选中 24sp、未选中 16sp。
-    expect(fontSizeOf('推荐'), 24);
-    expect(fontSizeOf('看剧'), 16);
+    expect(fontSizeOf('推荐'), 17);
+    expect(fontSizeOf('看剧'), 17);
+    final nextTab = tester.getRect(find.text('看剧'));
 
     await tester.tap(find.text('看剧'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 90));
-    // 切换不是瞬间跳字号：180ms 动画走到一半时两档都还在中间值。
-    expect(fontSizeOf('推荐'), greaterThan(16));
-    expect(fontSizeOf('推荐'), lessThan(24));
-    expect(fontSizeOf('看剧'), greaterThan(16));
-    expect(fontSizeOf('看剧'), lessThan(24));
+    expect(fontSizeOf('推荐'), 17);
+    expect(fontSizeOf('看剧'), 17);
 
     await tester.pump(const Duration(milliseconds: 150));
-    expect(fontSizeOf('推荐'), 16);
-    expect(fontSizeOf('看剧'), 24);
+    expect(fontSizeOf('推荐'), 17);
+    expect(fontSizeOf('看剧'), 17);
+    expect(tester.getRect(find.text('看剧')).left, closeTo(nextTab.left, 1));
     expect(tester.takeException(), isNull);
   });
 
@@ -1814,9 +1812,7 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
-  testWidgets('桌面 feed：手动暂停后切窗口/最小化再回来都不许自动恢复', (
-    tester,
-  ) async {
+  testWidgets('桌面 feed：手动暂停后切窗口/最小化再回来都不许自动恢复', (tester) async {
     SharedPreferences.setMockInitialValues({});
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     await tester.binding.setSurfaceSize(const Size(1280, 800));
@@ -1878,9 +1874,7 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
-  testWidgets('桌面 feed：播放中被最小化是可见性暂停，切回自动恢复', (
-    tester,
-  ) async {
+  testWidgets('桌面 feed：播放中被最小化是可见性暂停，切回自动恢复', (tester) async {
     SharedPreferences.setMockInitialValues({});
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     await tester.binding.setSurfaceSize(const Size(1280, 800));
@@ -1978,9 +1972,7 @@ void main() {
     expect(find.text('1 / 2'), findsNothing);
   });
 
-  testWidgets('桌面 feed 顶栏只剩频道条一行，搜索入口收敛到频道条图标', (
-    tester,
-  ) async {
+  testWidgets('桌面 feed 顶栏只剩频道条一行，搜索入口收敛到频道条图标', (tester) async {
     SharedPreferences.setMockInitialValues({});
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     await tester.binding.setSurfaceSize(const Size(1280, 800));
@@ -1993,10 +1985,7 @@ void main() {
 
     // 搜索行不渲染；分区搜索只剩频道条右端的图标一处。
     expect(find.byKey(const Key('drama_search_button')), findsNothing);
-    expect(
-      find.byKey(const Key('drama_strip_search_button')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('drama_strip_search_button')), findsOneWidget);
     // 播放器顶端只让出频道条一行（38），不再是搜索行 + 频道条的 76。
     expect(
       tester.getTopLeft(find.byKey(const ValueKey('desktop-feed-player'))).dy,

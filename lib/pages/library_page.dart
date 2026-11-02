@@ -64,12 +64,6 @@ enum _MenuAction {
   final IconData icon;
 }
 
-/// 页面动效时长统一入口：无障碍「移除动画」开启时全部退化为瞬时切换。
-Duration _motionDuration(BuildContext context, int milliseconds) =>
-    MediaQuery.disableAnimationsOf(context)
-    ? Duration.zero
-    : Duration(milliseconds: milliseconds);
-
 /// 书架页：L1 标题栏（tab + 搜索 + 更多；菜单承载版式/清空历史/离线缓存）/
 /// L2 工具栏（今日已读 + 版式分段；收藏 tab 为类型筛选 + 版式分段）/
 /// L3 内容区（三档版式）+ 编辑态（长按卡片进入，提供全选与移出书架）。
@@ -195,8 +189,10 @@ class _LibraryPageState extends State<LibraryPage> with WidgetsBindingObserver {
       await Future.wait(
         books.skip(i).take(3).map((item) async {
           try {
-            final count = await (widget.chapterCountLoader ??
-                loadBookChapterCount)(item.id);
+            final count =
+                await (widget.chapterCountLoader ?? loadBookChapterCount)(
+                  item.id,
+                );
             if (!mounted || count <= 0) return;
             _latestChapterCounts[item.id] = count;
             if (_visible) _load();
@@ -520,8 +516,7 @@ class _LibraryPageState extends State<LibraryPage> with WidgetsBindingObserver {
     1 => _browseHistory,
     2 => _sortShelf([
       for (final entry in _collection)
-        if (_collectionFilter == null ||
-            entry.item.kind == _collectionFilter)
+        if (_collectionFilter == null || entry.item.kind == _collectionFilter)
           entry,
     ]),
     _ => _sortShelf(_shelf),
@@ -776,7 +771,7 @@ class _LibraryPageState extends State<LibraryPage> with WidgetsBindingObserver {
             children: [
               // L1 标题栏：编辑态与浏览态淡切。
               AnimatedSwitcher(
-                duration: _motionDuration(context, 200),
+                duration: HomeMotion.duration(context, 160),
                 child: _editing
                     ? KeyedSubtree(
                         key: const ValueKey('library-edit-bar'),
@@ -824,34 +819,38 @@ class _LibraryPageState extends State<LibraryPage> with WidgetsBindingObserver {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Expanded(
-            child: Row(
-              children: [
-                for (var index = 0; index < _tabTitles.length; index++) ...[
-                  if (index > 0) const SizedBox(width: 20),
-                  _TabButton(
-                    label: _tabTitles[index],
-                    selected: _tab == index,
-                    palette: palette,
-                    onTap: () => _selectTab(index),
-                  ),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (var index = 0; index < _tabTitles.length; index++) ...[
+                    if (index > 0) const SizedBox(width: 20),
+                    _TabButton(
+                      label: _tabTitles[index],
+                      selected: _tab == index,
+                      palette: palette,
+                      onTap: () => _selectTab(index),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
-          _IconAction(
-            key: const Key('library-search-button'),
-            tooltip: '搜索',
-            icon: LucideIcons.search,
-            color: palette.ink,
-            onTap: _openSearch,
-          ),
+          if (!isWindowsDesktop)
+            _IconAction(
+              key: const Key('library-search-button'),
+              tooltip: '搜索',
+              icon: LucideIcons.search,
+              color: palette.ink,
+              onTap: _openSearch,
+            ),
           const SizedBox(width: 6),
           PopupMenuButton<_MenuAction>(
             key: const Key('library-more-button'),
             tooltip: '更多',
             color: palette.surface,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(8),
               side: BorderSide(color: palette.line, width: 0.6),
             ),
             elevation: 4,
@@ -926,15 +925,8 @@ class _LibraryPageState extends State<LibraryPage> with WidgetsBindingObserver {
       ),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: palette.soft,
-              borderRadius: BorderRadius.circular(ShelfTokens.radiusChip),
-              border: Border.all(color: palette.line, width: 0.5),
-            ),
+          Expanded(
             child: Row(
-              mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
                   LucideIcons.clock,
@@ -942,18 +934,21 @@ class _LibraryPageState extends State<LibraryPage> with WidgetsBindingObserver {
                   color: palette.muted,
                 ),
                 const SizedBox(width: 5),
-                Text(
-                  '今日已读$_todayMinutes分钟',
-                  style: TextStyle(
-                    fontSize: ShelfTokens.subtitle,
-                    fontWeight: FontWeight.w500,
-                    color: palette.ink,
+                Flexible(
+                  child: Text(
+                    '今日已读$_todayMinutes分钟',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: ShelfTokens.subtitle,
+                      color: palette.muted,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-          const Spacer(),
+          const SizedBox(width: 12),
           _LayoutSegments(
             current: _layout,
             palette: palette,
@@ -976,30 +971,39 @@ class _LibraryPageState extends State<LibraryPage> with WidgetsBindingObserver {
       ),
       child: Row(
         children: [
-          _CollectionChip(
-            key: const Key('library-collection-filter-all'),
-            label: '全部',
-            selected: _collectionFilter == null,
-            palette: palette,
-            onTap: () => setState(() => _collectionFilter = null),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _CollectionChip(
+                    key: const Key('library-collection-filter-all'),
+                    label: '全部',
+                    selected: _collectionFilter == null,
+                    palette: palette,
+                    onTap: () => setState(() => _collectionFilter = null),
+                  ),
+                  const SizedBox(width: 8),
+                  _CollectionChip(
+                    key: const Key('library-collection-filter-video'),
+                    label: '短剧',
+                    selected: _collectionFilter == 'video',
+                    palette: palette,
+                    onTap: () => setState(() => _collectionFilter = 'video'),
+                  ),
+                  const SizedBox(width: 8),
+                  _CollectionChip(
+                    key: const Key('library-collection-filter-manju'),
+                    label: '漫剧',
+                    selected: _collectionFilter == 'manju',
+                    palette: palette,
+                    onTap: () => setState(() => _collectionFilter = 'manju'),
+                  ),
+                ],
+              ),
+            ),
           ),
-          const SizedBox(width: 8),
-          _CollectionChip(
-            key: const Key('library-collection-filter-video'),
-            label: '短剧',
-            selected: _collectionFilter == 'video',
-            palette: palette,
-            onTap: () => setState(() => _collectionFilter = 'video'),
-          ),
-          const SizedBox(width: 8),
-          _CollectionChip(
-            key: const Key('library-collection-filter-manju'),
-            label: '漫剧',
-            selected: _collectionFilter == 'manju',
-            palette: palette,
-            onTap: () => setState(() => _collectionFilter = 'manju'),
-          ),
-          const Spacer(),
+          const SizedBox(width: 12),
           _LayoutSegments(
             current: _layout,
             palette: palette,
@@ -1039,17 +1043,10 @@ class _LibraryPageState extends State<LibraryPage> with WidgetsBindingObserver {
       BookshelfLayout.doubleColumn => _doubleGrid(entries),
       BookshelfLayout.list => _list(entries),
     };
-    // 版式切换：fade+scale 220ms（无障碍关闭动画时瞬时）。
     return AnimatedSwitcher(
-      duration: _motionDuration(context, 220),
+      duration: HomeMotion.duration(context, 180),
+      reverseDuration: HomeMotion.duration(context, 90),
       switchInCurve: Curves.easeOutCubic,
-      transitionBuilder: (child, animation) => FadeTransition(
-        opacity: animation,
-        child: ScaleTransition(
-          scale: Tween(begin: 0.96, end: 1.0).animate(animation),
-          child: child,
-        ),
-      ),
       child: KeyedSubtree(
         key: ValueKey('shelf-content-${_layout.name}'),
         child: body,
@@ -1059,90 +1056,97 @@ class _LibraryPageState extends State<LibraryPage> with WidgetsBindingObserver {
 
   Widget _grid(List<_ShelfEntry> entries) {
     return LayoutBuilder(
-      builder: (context, constraints) => GridView.builder(
-        physics: const AlwaysScrollableScrollPhysics(),
-        key: const Key('shelf-grid-view'),
-        padding: const EdgeInsets.fromLTRB(
-          ShelfTokens.screenPadding,
-          ShelfTokens.spaceXS,
-          ShelfTokens.screenPadding,
-          ShelfTokens.contentBottomInset,
-        ),
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: isWindowsDesktop
-              ? (constraints.maxWidth / 170).floor().clamp(3, 10)
-              : ShelfTokens.gridColumns,
-          crossAxisSpacing: ShelfTokens.gridSpacing,
-          mainAxisSpacing: ShelfTokens.gridRunSpacing,
-          childAspectRatio: shelfGridChildAspectRatio(
-            context,
-            availableWidth: constraints.maxWidth,
-            columns: isWindowsDesktop
-                ? (constraints.maxWidth / 170).floor().clamp(3, 10)
-                : ShelfTokens.gridColumns,
+      builder: (context, constraints) {
+        final columns = isWindowsDesktop
+            ? (constraints.maxWidth / 180).floor().clamp(3, 10)
+            : ShelfTokens.gridColumns;
+        return GridView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
+          key: const Key('shelf-grid-view'),
+          padding: const EdgeInsets.fromLTRB(
+            ShelfTokens.screenPadding,
+            ShelfTokens.spaceXS,
+            ShelfTokens.screenPadding,
+            ShelfTokens.contentBottomInset,
           ),
-        ),
-        itemCount: entries.length,
-        itemBuilder: (context, index) {
-          final entry = entries[index];
-          return HomeEntrance(
-            index: index,
-            animate: index < 6 && _entered.add(index),
-            child: BookshelfGridCard(
-              key: ValueKey('shelf-grid-${entry.selectionKey}'),
-              item: entry.item,
-              badgeText: entry.badgeText,
-              infoText: entry.infoText,
-              editing: _editing,
-              selected: _selected.contains(entry.selectionKey),
-              onTap: () => _tap(entry),
-              onLongPress: () => _longPress(entry),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            crossAxisSpacing: ShelfTokens.gridSpacing,
+            mainAxisSpacing: ShelfTokens.gridRunSpacing,
+            childAspectRatio: shelfGridChildAspectRatio(
+              context,
+              availableWidth: constraints.maxWidth,
+              columns: columns,
             ),
-          );
-        },
-      ),
+          ),
+          itemCount: entries.length,
+          itemBuilder: (context, index) {
+            final entry = entries[index];
+            return HomeEntrance(
+              index: index,
+              animate: index < 6 && _entered.add(index),
+              child: BookshelfGridCard(
+                key: ValueKey('shelf-grid-${entry.selectionKey}'),
+                item: entry.item,
+                badgeText: entry.badgeText,
+                infoText: entry.infoText,
+                editing: _editing,
+                selected: _selected.contains(entry.selectionKey),
+                onTap: () => _tap(entry),
+                onLongPress: () => _longPress(entry),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
   Widget _doubleGrid(List<_ShelfEntry> entries) {
     return LayoutBuilder(
-      builder: (context, constraints) => GridView.builder(
-        physics: const AlwaysScrollableScrollPhysics(),
-        key: const Key('shelf-double-view'),
-        padding: const EdgeInsets.fromLTRB(
-          ShelfTokens.screenPadding,
-          ShelfTokens.spaceXS,
-          ShelfTokens.screenPadding,
-          ShelfTokens.contentBottomInset,
-        ),
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: ShelfTokens.gridSpacing,
-          mainAxisSpacing: ShelfTokens.gridSpacing,
-          childAspectRatio: shelfDoubleChildAspectRatio(
-            context,
-            availableWidth: constraints.maxWidth,
+      builder: (context, constraints) {
+        final columns = isWindowsDesktop
+            ? (constraints.maxWidth / 260).floor().clamp(2, 6)
+            : 2;
+        return GridView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
+          key: const Key('shelf-double-view'),
+          padding: const EdgeInsets.fromLTRB(
+            ShelfTokens.screenPadding,
+            ShelfTokens.spaceXS,
+            ShelfTokens.screenPadding,
+            ShelfTokens.contentBottomInset,
           ),
-        ),
-        itemCount: entries.length,
-        itemBuilder: (context, index) {
-          final entry = entries[index];
-          return HomeEntrance(
-            index: index,
-            animate: index < 6 && _entered.add(index),
-            child: BookshelfDoubleCard(
-              key: ValueKey('shelf-double-${entry.selectionKey}'),
-              item: entry.item,
-              badgeText: entry.badgeText,
-              subtitleText: entry.subtitleText,
-              editing: _editing,
-              selected: _selected.contains(entry.selectionKey),
-              onTap: () => _tap(entry),
-              onLongPress: () => _longPress(entry),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            crossAxisSpacing: ShelfTokens.gridSpacing,
+            mainAxisSpacing: ShelfTokens.gridSpacing,
+            childAspectRatio: shelfDoubleChildAspectRatio(
+              context,
+              availableWidth: constraints.maxWidth,
+              columns: columns,
             ),
-          );
-        },
-      ),
+          ),
+          itemCount: entries.length,
+          itemBuilder: (context, index) {
+            final entry = entries[index];
+            return HomeEntrance(
+              index: index,
+              animate: index < 6 && _entered.add(index),
+              child: BookshelfDoubleCard(
+                key: ValueKey('shelf-double-${entry.selectionKey}'),
+                item: entry.item,
+                badgeText: entry.badgeText,
+                subtitleText: entry.subtitleText,
+                editing: _editing,
+                selected: _selected.contains(entry.selectionKey),
+                onTap: () => _tap(entry),
+                onLongPress: () => _longPress(entry),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -1450,7 +1454,7 @@ class _ShelfEntry {
 
   int? get _totalChapterCount =>
       chapterCount != null &&
-      (latestChapterCount == null || latestChapterCount! < chapterCount!)
+          (latestChapterCount == null || latestChapterCount! < chapterCount!)
       ? chapterCount
       : latestChapterCount;
 
@@ -1582,16 +1586,15 @@ class _TabButton extends StatelessWidget {
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: selected ? 18 : 15,
+                  fontSize: 18,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                  letterSpacing: -0.3,
                   color: selected ? palette.ink : palette.muted,
                 ),
               ),
               const SizedBox(height: 5),
               // 指示条宽度动画；高度恒定保持行高一致。
               AnimatedContainer(
-                duration: _motionDuration(context, 220),
+                duration: HomeMotion.duration(context, 160),
                 curve: Curves.easeOutCubic,
                 width: selected ? 26 : 0,
                 height: 3,
@@ -1669,16 +1672,23 @@ class _LayoutSegments extends StatelessWidget {
               child: InkWell(
                 key: Key('shelf-layout-${layout.segmentKey}'),
                 onTap: () => onChanged(layout),
-                borderRadius: BorderRadius.circular(9),
-                child: Container(
-                  width: 34,
-                  height: 30,
+                borderRadius: BorderRadius.circular(6),
+                child: AnimatedContainer(
+                  duration: HomeMotion.duration(context, 140),
+                  curve: Curves.easeOutCubic,
+                  width: 38,
+                  height: 34,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: layout == current
-                        ? HomePalette.accent.withValues(alpha: 0.15)
+                        ? palette.surface
                         : Colors.transparent,
-                    borderRadius: BorderRadius.circular(9),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: layout == current
+                          ? palette.line
+                          : Colors.transparent,
+                    ),
                   ),
                   child: Icon(
                     layout.menuIcon,
